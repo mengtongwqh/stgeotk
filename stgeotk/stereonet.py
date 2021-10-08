@@ -3,6 +3,7 @@ import numpy as np
 from matplotlib.patches import Circle
 import matplotlib.pyplot as plt
 from . dataset import DatasetBase, ContourData
+from . utility import logger
 from abc import ABC, abstractmethod
 
 # fonts
@@ -137,6 +138,9 @@ class Stereonet:
             else:
                 self.color_axes[id(plot)] = self._create_next_color_axis()
 
+        logger.info("{0} added to the stereonet with options: {1}".format(
+            type(plot), plot.plot_options))
+
     def generate_plots(self, show_plot=True):
         '''
         Plot all datasets on this stereonet
@@ -152,6 +156,7 @@ class Stereonet:
 
         # draw legends
         self.data_axes.legend(loc="upper right")
+        logger.info("All plots are successfully generated.")
         # show plots immediately
         if show_plot:
             plt.show()
