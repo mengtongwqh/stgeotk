@@ -1,4 +1,27 @@
 import numpy as np
+import logging
+import datetime
+
+# setup logger
+logger = logging.getLogger("stgeotk")
+formatter = logging.Formatter(
+    "[%(levelname)s][%(asctime)s] %(name)s: %(message)s")
+
+if __debug__:
+    logger.setLevel(logging.DEBUG)
+    stream_handler = logging.StreamHandler()
+    stream_handler.setLevel(logging.DEBUG)
+    stream_handler.setFormatter(formatter)
+    logger.addHandler(stream_handler)
+else:
+    logger.setLevel(logging.INFO)
+    log_filename = "stgeotk_" + \
+        datetime.datetime.now().strftime("%Y-%m-%d_%H:%M:%S") + ".log"
+    file_handler = logging.FileHandler(log_filename)
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+
 
 seconds_per_year = 60 * 60 * 24 * 365.2425
 
@@ -65,3 +88,10 @@ def cartesian_to_spherical(xyz):
     phi = np.arctan2(np.sqrt(x2y2), z)
     radius = np.sqrt(x2y2 + z*z)
     return np.array([theta, phi, radius]).T
+
+
+def deref_or_default(kv, key, default):
+    if key in kv:
+        return kv[key]
+    else:
+        return default
