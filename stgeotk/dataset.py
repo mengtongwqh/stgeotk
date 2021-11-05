@@ -1,6 +1,8 @@
 import numpy as np
 import math
-from . utility import line_to_cartesian, deref_or_default, logger
+from . utility import *
+from . coordinates import *
+
 from abc import ABC, abstractmethod
 
 import warnings
@@ -26,15 +28,15 @@ class CountingGrid:
         '''
         spacing = math.radians(degree_spacing)
         nodes = [(0.0, 90.0)]  # south pole
-        # equator
-        for theta in np.arange(0., 360.,  degree_spacing):
-            nodes.append((theta + 90.0 + degree_spacing / 2.0, 0.0))
         # ordinary points on sphere
         for phi in np.arange(degree_spacing, 90.0, degree_spacing):
             azm_spacing = math.sin(spacing/2.0) / math.sin(math.radians(phi))
             azm_spacing = math.degrees(2*math.asin(azm_spacing))
             for theta in np.arange(0.0, 360.0, azm_spacing):
                 nodes.append((theta + phi + azm_spacing/2.0, 90.0 - phi))
+        # equator
+        for theta in np.arange(0., 360.,  azm_spacing):
+            nodes.append((theta + 90.0 + degree_spacing / 2.0, 0.0))
         # convert to directional cosines
         return line_to_cartesian(np.array(nodes))
 
@@ -187,7 +189,8 @@ class ContourData(DatasetBase):
         # counting grid
         super().__init__(3)
         self._grid_spacing = deref_or_default(kwargs, "grid_spacing", 2.5)
-        self._counting_method = deref_or_default(kwargs, "method", "kamb")
+        self._counting_method = deref_or_default(
+            kwargs, "counting_method", "kamb")
         self._counting_angle = deref_or_default(kwargs, "counting_angle", None)
         self._color_data = None
         if data_to_contour is not None:
@@ -195,6 +198,10 @@ class ContourData(DatasetBase):
 
     def load_data(self, data_to_contour):
         if isinstance(data_to_contour, LineData):
+            if data_to_contour.n_entries == 0:
+                raise RuntimeError(
+                    "The input LineData is empty and therefore "
+                    "cannot be contoured.")
             self._dataset_to_contour = data_to_contour
             self._data_legend = data_to_contour.data_legend + "CountingGrid"
             # instantiate a counting grid
@@ -207,23 +214,30 @@ class ContourData(DatasetBase):
             raise RuntimeError(
                 "Dataset type {0} cannot be contoured.".format(type(data_to_contour)))
 
-    @ property
+    @property
     def dataset_to_contour(self):
         return self._dataset_to_contour
+
+    @property
+    def counting_method(self):
+        return self._counting_method
 
     @ property
     def nodes(self):
         return self._data
 
     def count(self):
+        timer = Timer()
+        timer.start()
         if self._counting_method == "kamb":
             count = self._count_kamb(self._counting_angle)
-            logger.info("ContourData count [{0}, {1}]".format(
-                min(count), max(count)))
-            return count
         else:
             raise RuntimeError(
                 "Unknown counting method {0}".format(self._counting_method))
+        timer.stop()
+        logger.info("ContourData density range [{0}, {1}] using method {2}.".
+                    format(min(count), max(count), self.counting_method))
+        return count
 
     def _set_data(self, value):
         raise RuntimeError(
@@ -251,13 +265,15 @@ class ContourData(DatasetBase):
         which is based on Kamb (1956). 
         Will estimate an appropriate counting angle if not give.
         '''
+        n = self.dataset_to_contour.n_entries
         if counting_angle is not None:
             theta = math.cos(math.radians(counting_angle))
         else:
-            n = self.dataset_to_contour.n_entries
             theta = (n - 1.0) / (n + 1.0)
 
         datac = self.dataset_to_contour.data
+        if not np.all(np.isfinite(datac)):
+            raise RuntimeError("Data to be contoured has infinite values.")
         self.color_data = np.where(np.abs(np.dot(self.nodes, datac.T))
                                    >= theta, 1, 0).sum(axis=1) / n * 100
         return self.color_data

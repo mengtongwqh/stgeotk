@@ -3,7 +3,7 @@ import numpy as np
 from matplotlib.patches import Circle
 import matplotlib.pyplot as plt
 from . dataset import DatasetBase, ContourData
-from . utility import logger
+from . utility import *
 from abc import ABC, abstractmethod
 
 # fonts
@@ -11,6 +11,8 @@ title_font = {"family": "sans-serif", "size": "12", "weight": "regular",
               "color": "black", "verticalalignment": "bottom"}
 label_font = {"family": "sans-serif", "size": "10",
               "color": "black", "verticalalignment": "bottom"}
+info_font = {"family": "sans-serif", "size": "6",
+             "color": "black", "verticalalignment": "top", "horizontalalignment": "left"}
 
 
 class ProjectionBase(ABC):
@@ -60,7 +62,7 @@ class EqualAngle(ProjectionBase):
 
 class Stereonet:
     '''
-    The stereonet will accept different plots and 
+    The stereonet will accept different plots and
     plot them on a single stereonet.
     This class also includes the projection method.
     '''
@@ -138,13 +140,15 @@ class Stereonet:
             else:
                 self.color_axes[id(plot)] = self._create_next_color_axis()
 
-        logger.info("{0} added to the stereonet with options: {1}".format(
-            type(plot), plot.plot_options))
+        logger.info("{0} added to stereonet with options:{1}".format(
+            type(plot).__name__, plot.plot_options))
 
     def generate_plots(self, show_plot=True):
         '''
         Plot all datasets on this stereonet
         '''
+        timer = Timer()
+        timer.start()
         for plot in self.plots:
             plot_obj = plot.draw()
             caxis = self.color_axes[id(plot)]
@@ -156,7 +160,14 @@ class Stereonet:
 
         # draw legends
         self.data_axes.legend(loc="upper right")
-        logger.info("All plots are successfully generated.")
+        timer.stop()
+        logger.info("All plots are successfully generated")
+        # info string
+        info_txt = ""
+        for plot in self.plots:
+            info_txt += plot.info_text() + '\n'
+        self.data_axes.text(1.05, 0.95, info_txt,
+                            transform=self.data_axes.transAxes,  **info_font)
         # show plots immediately
         if show_plot:
             plt.show()
@@ -170,7 +181,7 @@ class Stereonet:
 
     def draw_primitive_circle(self):
         '''
-        Draw the primitive circle 
+        Draw the primitive circle
         '''
         self.data_axes.set_axis_off()
         circ = Circle((0, 0), radius=1, edgecolor="black",
@@ -203,23 +214,27 @@ class PlotBase(ABC):
         self._dataset_to_plot = data
         self.plot_options = kwargs
 
-    @abstractmethod
+    @ abstractmethod
     def _set_plot_options(self, value):
         return
 
-    @property
+    @ abstractmethod
+    def info_text(self):
+        return
+
+    @ property
     def stereonet(self):
         return self._stereonet
 
-    @property
+    @ property
     def dataset_to_plot(self):
         return self._dataset_to_plot
 
-    @property
+    @ property
     def plot_options(self):
         return self._plot_options
 
-    @plot_options.setter
+    @ plot_options.setter
     def plot_options(self, value):
         self._set_plot_options(value)
 
@@ -270,6 +285,10 @@ class LinePlot(PlotBase):
                                                     label=self.dataset_to_plot.data_legend,  **opt)
         return plot
 
+    def info_text(self):
+        return "Scatter plot for dataset \"{0}\" contains {1} points".format(
+            self.dataset_to_plot.data_legend, self.dataset_to_plot.n_entries)
+
 
 class ContourPlot(PlotBase):
     '''
@@ -310,6 +329,11 @@ class ContourPlot(PlotBase):
         if "cmap" not in self._plot_options:
             self._plot_options["cmap"] = "Oranges"
         if "antialiased" not in self._plot_options:
-            self._plot_options["antialiased"] = True
+            self._plot_options["antialiased"] = False
         if "alpha" not in self._plot_options:
             self._plot_options["alpha"] = 1.0
+
+    def info_text(self):
+        return "ContourPlot of dataset \"{0}\" with counting method \"{1}\".".\
+            format(self.dataset_to_plot.dataset_to_contour.data_legend,
+                   self.dataset_to_plot._counting_method)
