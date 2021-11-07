@@ -1,11 +1,9 @@
-import numpy as np
-import math
 from . utility import *
 from . coordinates import *
 
+import numpy as np
+import math
 from abc import ABC, abstractmethod
-
-import warnings
 
 
 class CountingGrid:
@@ -67,6 +65,7 @@ class DatasetBase(ABC):
         self._color_data = None
         self._color_legend = ""
         self._n_entries = 0
+        self._is_polarized = False  # whether the vector direction matters
 
     @property
     def spacedim(self):
@@ -75,6 +74,10 @@ class DatasetBase(ABC):
     @property
     def n_entries(self):
         return self._n_entries
+
+    @property
+    def is_polarized(self):
+        return self._is_polarized
 
     @property
     def data(self):
@@ -116,6 +119,7 @@ class LineData(DatasetBase):
 
     def __init__(self, **kwargs):
         super().__init__(3)
+        self._is_polarized = False
         # lower/upper hemispheric projection
         self._lower_hemisphere = True
         if "lower_hemisphere" in kwargs:
@@ -145,8 +149,8 @@ class LineData(DatasetBase):
         self.color_data = color_data
         self._data_legend = data_legend
         self._color_legend = color_legend
-        logger.info("LineData of {0} entries are loaded with legend \"{1}\"".
-                    format(self.n_entries, self.data_legend))
+        log_info("LineData of {0} entries are loaded with legend \"{1}\"".
+                 format(self.n_entries, self.data_legend))
 
     def _set_data(self, value):
         '''
@@ -179,6 +183,22 @@ class LineData(DatasetBase):
             lower_hemis = self._data[:, 2] < 0
             self._data[lower_hemis, :] = -self._data[lower_hemis, :]
 
+    def write_to_file(self, **kwargs):
+        '''
+        write the underlying data to file so that comparisons
+        can be made with other stereonet software
+        '''
+        file = kwargs.get("file", self.data_legend + ".txt")
+        if isinstance(self.data, np.ndarray):
+            # convert to trend-plunge (geological) coordinates
+            line_tp = cartesian_to_line(self._data) 
+            np.savetxt(file, line_tp)
+            log_info(
+                f"{self._n_entries} line data entries written to file [{file}]")
+        else:
+            raise RuntimeError(
+                f"Export method for {type(self._data).name()} is not implemented")
+
 
 class ContourData(DatasetBase):
     '''
@@ -188,15 +208,26 @@ class ContourData(DatasetBase):
     def __init__(self, data_to_contour=None, **kwargs):
         # counting grid
         super().__init__(3)
-        self._grid_spacing = deref_or_default(kwargs, "grid_spacing", 2.5)
-        self._counting_method = deref_or_default(
-            kwargs, "counting_method", "kamb")
-        self._counting_angle = deref_or_default(kwargs, "counting_angle", None)
+        # parse graphing options
+        self.parse_options(kwargs)
+        # load the data
         self._color_data = None
         if data_to_contour is not None:
             self.load_data(data_to_contour)
 
+    def parse_options(self, opts):
+        self._grid_spacing = opts.get("grid_spacing", 2.5)
+        # counting options
+        self._counting_method = opts.get("counting_method", "fisher")
+        self._counting_angle = opts.get("counting_angle", None)
+        self._counting_k = opts.get("counting_k", None)
+        self._auto_k_optimization = opts.get("auto_k_optimization", False)
+        self._n_sigma = opts.get("n_sigma", 3)
+
     def load_data(self, data_to_contour):
+        # load the actual data
+        self._is_polarized = data_to_contour.is_polarized
+
         if isinstance(data_to_contour, LineData):
             if data_to_contour.n_entries == 0:
                 raise RuntimeError(
@@ -214,6 +245,9 @@ class ContourData(DatasetBase):
             raise RuntimeError(
                 "Dataset type {0} cannot be contoured.".format(type(data_to_contour)))
 
+        log_info(
+            f"{type(data_to_contour).__name__} {data_to_contour.data_legend}loaded for contouring. Polarized = {data_to_contour.is_polarized}")
+
     @property
     def dataset_to_contour(self):
         return self._dataset_to_contour
@@ -222,66 +256,119 @@ class ContourData(DatasetBase):
     def counting_method(self):
         return self._counting_method
 
-    @ property
+    @property
     def nodes(self):
         return self._data
 
     def count(self):
+        if not np.all(np.isfinite(self.dataset_to_contour.data)):
+            raise RuntimeError("Data to be contoured has infinite values.")
+
         timer = Timer()
         timer.start()
         if self._counting_method == "kamb":
             count = self._count_kamb(self._counting_angle)
+        elif self._counting_method == "fisher":
+            count = self._count_fisher(self._counting_k)
         else:
             raise RuntimeError(
                 "Unknown counting method {0}".format(self._counting_method))
         timer.stop()
-        logger.info("ContourData density range [{0}, {1}] using method {2}.".
-                    format(min(count), max(count), self.counting_method))
+        log_info("ContourData density range [{0}, {1}] using method \"{2}\".".format(
+            min(count), max(count), self.counting_method))
         return count
 
     def _set_data(self, value):
         raise RuntimeError(
-            "data attributes in ContourData is set automatically set. Do not use this setter.")
+            "Data attributes in ContourData is set automatically. "
+            "Do not use this setter.")
 
     def _optimize_k(self):
         '''
         Optimizes the value of K from the data, 
-        using Diggle and Fisher (88) method.
+        Inherited from auttitude package,
+        where they claimed this is from using Diggle and Fisher (88).
+        However that publication does not exist and 
+        we don't know why this works.
         '''
+        timer = Timer()
+        timer.start()
         from scipy.optimize import minimize_scalar
         datac = self.dataset_to_contour.data
-        # objective function to be minimized
 
+        # objective function to be minimized
         def obj(k):
-            W = np.exp(k*(np.abs(np.dot(datac, datac.T))))\
-                * (k/(4*np.pi*np.sinh(k+1e-9)))
-            np.fill_diagonal(W, 0.)
+            # suppress warning if k == 0.0
+            k = 1.0e-9 if abs(k) < 1.0e-9 else k
+            W = np.exp(k * (np.abs(np.dot(datac, datac.T)))) \
+                * (k / (4.0 * math.pi * math.sinh(k + 1.0e-9)))
+            np.fill_diagonal(W, 0.0)
             return -np.log(W.sum(axis=0)).sum()
-        return minimize_scalar(obj).x
+
+        val = minimize_scalar(obj).x
+        timer.stop()
+        return val
 
     def _count_kamb(self, counting_angle):
         '''
         Performs counting as in Robin and Jowett (1986), 
-        which is based on Kamb (1956). 
+        which is in turn based on Kamb (1956). 
         Will estimate an appropriate counting angle if not give.
+        Estimations comes from Robin and Jowett (1986), Table 2.
+        https://doi.org/10.1016/0040-1951(86)90044-2
         '''
-        n = self.dataset_to_contour.n_entries
-        if counting_angle is not None:
-            theta = math.cos(math.radians(counting_angle))
-        else:
-            theta = (n - 1.0) / (n + 1.0)
-
         datac = self.dataset_to_contour.data
-        if not np.all(np.isfinite(datac)):
-            raise RuntimeError("Data to be contoured has infinite values.")
+        n = self.dataset_to_contour.n_entries
+        polarized = self.dataset_to_contour.is_polarized
+
+        if counting_angle is not None:
+            cos_theta = math.cos(math.radians(counting_angle))
+            log_info("Prescribed counting angle for the Kamb's method is {0} degrees".
+                     format(counting_angle))
+        else:
+            nsig2 = self._n_sigma * self._n_sigma
+            if polarized:
+                cos_theta = (n - nsig2) / (n + nsig2)
+            else:
+                cos_theta = n / (n + nsig2)
+            log_info("Counting angle for the Kamb's method is chosen to be {0} degrees for {1} standard deviations".
+                     format(math.degrees(math.acos(cos_theta)), self._n_sigma))
+
+        # counting loop
         self.color_data = np.where(np.abs(np.dot(self.nodes, datac.T))
-                                   >= theta, 1, 0).sum(axis=1) / n * 100
+                                   >= cos_theta, 1, 0).sum(axis=1) / n * 100.0
         return self.color_data
 
     def _count_fisher(self, k=None):
         '''
-        Perform data counting as in Robin and Jowett (1986).
+        Perform data counting as in Robin and Jowett (1986) 
+        with spherical distribution
         Will guess an appropriate k if not given.
         '''
+        timer = Timer()
+        timer.start()
+        n = self.dataset_to_contour.n_entries
+        polarized = self.dataset_to_contour.is_polarized
+
         if k is None:
-            k = self._optimize_k
+            if self._auto_k_optimization:
+                k = self._optimize_k()
+                log_info(
+                    "Sample-optimized Fisher counting k = {0}".format(k))
+            else:
+                nsig2 = self._n_sigma * self._n_sigma
+                if polarized:
+                    k = 1.0 + n/nsig2
+                else:
+                    k = 2.0 * (1.0 + n/nsig2)
+                log_info(
+                    "Fisher counting k = {0} selected for {1} standard deviations".format(k, self._n_sigma))
+        else:
+            log_info("Prescribed Fisher counting k = {0}".format(k))
+
+        datac = self.dataset_to_contour.data
+        self.color_data = np.exp(
+            k * (np.abs(np.dot(self.nodes, datac.T)) - 1.0)).sum(axis=1) / n * 100.0
+
+        timer.stop()
+        return self.color_data
