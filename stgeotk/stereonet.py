@@ -62,9 +62,9 @@ class EqualAngle(ProjectionBase):
 
 class Stereonet:
     '''
-    The stereonet will accept different plots and
-    plot them on a single stereonet.
-    This class also includes the projection method.
+    The stereonet object will accept different plot objects
+    and plot them on a single stereonet, 
+    with the presribed projection method.
     '''
 
     def __init__(self, fig=None, ax=None, **kwargs):
@@ -140,7 +140,7 @@ class Stereonet:
             else:
                 self.color_axes[id(plot)] = self._create_next_color_axis()
 
-        logger.info("{0} added to stereonet with options:{1}".format(
+        log_info("{0} added to stereonet with options:{1}".format(
             type(plot).__name__, plot.plot_options))
 
     def generate_plots(self, show_plot=True):
@@ -161,7 +161,7 @@ class Stereonet:
         # draw legends
         self.data_axes.legend(loc="upper right")
         timer.stop()
-        logger.info("All plots are successfully generated")
+        log_info("All plots are successfully generated")
         # info string
         info_txt = ""
         for plot in self.plots:
@@ -206,7 +206,7 @@ class Stereonet:
 
 class PlotBase(ABC):
     '''
-    Base class of any plot
+    Base class for all plot objects
     '''
 
     def __init__(self, stereonet, data, **kwargs):

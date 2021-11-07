@@ -5,10 +5,22 @@ import time
 _timer_log_level = 15
 
 # setup logger
-logging.addLevelName(_timer_log_level, "TIMER")
+logging.addLevelName(_timer_log_level, "PROF")
 logger = logging.getLogger("stgeotk")
 formatter = logging.Formatter(
     "[%(levelname)s][%(asctime)s] %(name)s: %(message)s")
+
+
+class BColors:
+    HEADER = '\033[95m'
+    OKBLUE = '\033[94m'
+    OKCYAN = '\033[96m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
 
 
 if __debug__:
@@ -30,6 +42,10 @@ else:
 seconds_per_year = 60 * 60 * 24 * 365.2425
 
 
+def log_info(msg):
+    logger.info(BColors.OKGREEN + msg + BColors.ENDC)
+
+
 def current_function_name(level=1):
     import sys
     return sys._getframe(level).f_code.co_name
@@ -41,13 +57,6 @@ def second_to_myr(seconds):
 
 def meter_per_second_to_cm_per_year(meter_per_second):
     return seconds_per_year * 100. * meter_per_second
-
-
-def deref_or_default(kv, key, default):
-    if key in kv:
-        return kv[key]
-    else:
-        return default
 
 
 class TimerError(Exception):
@@ -88,6 +97,8 @@ class Timer:
             raise TimerError("Timer is not yet started")
         elapsed_time = time.perf_counter() - self._start_time
         self._start_time = None
-        logger.log(_timer_log_level, "Timer in [{0}] elapsed {1} seconds".\
-            format(self._label_text, elapsed_time))
+        logger.log(_timer_log_level,
+                   f"{BColors.OKBLUE}{BColors.BOLD}[{self._label_text}]"
+                   f"{BColors.ENDC}{BColors.OKBLUE} elpased {elapsed_time} "
+                   f"seconds{BColors.ENDC}")
         return elapsed_time
