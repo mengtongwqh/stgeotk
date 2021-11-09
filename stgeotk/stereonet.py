@@ -204,6 +204,14 @@ class Stereonet:
         return self.projection.project(data)
 
 
+    def save_plot(self, fname, **kwargs):
+        '''
+        export the plot to disk
+        '''
+        self.figure.savefig(fname, **kwargs) 
+        log_info(f"Stereonet plot is saved to {fname}")
+
+
 class PlotBase(ABC):
     '''
     Base class for all plot objects

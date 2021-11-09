@@ -191,7 +191,7 @@ class LineData(DatasetBase):
         file = kwargs.get("file", self.data_legend + ".txt")
         if isinstance(self.data, np.ndarray):
             # convert to trend-plunge (geological) coordinates
-            line_tp = cartesian_to_line(self._data) 
+            line_tp = cartesian_to_line(self._data)
             np.savetxt(file, line_tp)
             log_info(
                 f"{self._n_entries} line data entries written to file [{file}]")
@@ -246,7 +246,9 @@ class ContourData(DatasetBase):
                 "Dataset type {0} cannot be contoured.".format(type(data_to_contour)))
 
         log_info(
-            f"{type(data_to_contour).__name__} {data_to_contour.data_legend}loaded for contouring. Polarized = {data_to_contour.is_polarized}")
+            f"{type(data_to_contour).__name__} {data_to_contour.data_legend}"
+            f"loaded for contouring. "
+            f"Polarized = {data_to_contour.is_polarized}")
 
     @property
     def dataset_to_contour(self):
@@ -297,11 +299,12 @@ class ContourData(DatasetBase):
         datac = self.dataset_to_contour.data
 
         # objective function to be minimized
+        # TODO consider rewriting this using NewtonRaphson
         def obj(k):
             # suppress warning if k == 0.0
             k = 1.0e-9 if abs(k) < 1.0e-9 else k
             W = np.exp(k * (np.abs(np.dot(datac, datac.T)))) \
-                * (k / (4.0 * math.pi * math.sinh(k + 1.0e-9)))
+                * (k / (4.0 * math.pi * math.sinh(k)))
             np.fill_diagonal(W, 0.0)
             return -np.log(W.sum(axis=0)).sum()
 
