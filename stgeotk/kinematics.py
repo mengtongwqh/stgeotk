@@ -2,26 +2,26 @@ import math
 import scipy.linalg as LA
 import numpy as np
 from . utility import logger
+import multiprocessing
+import concurrent.futures
 
 
-def strain_ellipsoid(F):
+def __strain_ellipsoid_single_entry(F):
     '''
-    Given the deformation gradient F, 
-    extract lineation, foliation normal 
+    Given the deformation gradient F,
+    extract lineation, foliation normal
     and the intermediate strain axis
     which correspond to the 3 axis of the strain ellipsoid.
-    They are also the eigenvectors of B = F*F^{T} = V*V, 
-    which is the left Cauchy-Green Tensor. 
+    They are also the eigenvectors of B = F*F^{T} = V*V,
+    which is the left Cauchy-Green Tensor.
+    Return the values as 3x3 matrix, the row from top to bottom are 
+    foliation normal, intermediate axis and lineation
     '''
-    if __debug__:
-        assert F.shape == (3, 3)
-
     try:
         FFt = F.dot(F.T)
         eigval, eigvec = LA.eigh(FFt)
-        lineation = math.sqrt(eigval[2]) * eigvec[:, 2]
-        foliation_normal = math.sqrt(eigval[0]) * eigvec[:, 0]
-        intermediate_axis = math.sqrt(eigval[1]) * eigvec[:, 1]
+        for i in range(0, 3):
+            eigvec[:, i] *= math.sqrt(eigval[i])
     except ValueError:
         # make note of the matrix
         logger.exception(
@@ -30,14 +30,43 @@ def strain_ellipsoid(F):
         logger.error("The FFt matrix is:\n{0}\n".format(FFt))
         logger.error("Eigenvalues are: {0}\n".format(eigval))
         raise  # rethrow the error
-    return lineation, foliation_normal, intermediate_axis
+    return eigvec.T
+
+
+def __strain_ellipsoid_multiprocess(F, range_begin, range_end):
+    eigvecs = np.zeros((range_end-range_begin, 3, 3))
+    counter = 0
+    for i in range(range_begin, range_end):
+        eigvecs[counter, :] = __strain_ellipsoid_single_entry(F[i, :])
+        counter += 1
+    return eigvecs
+
+
+def strain_ellipsoid(F):
+    if len(F.shape) == 2 and F.shape == (3, 3):
+        return __strain_ellipsoid_single_entry(F)
+    elif len(F.shape) == 3 and F.shape[1] == F.shape[2] == 3:
+        # use multi-processing
+        n_procs = multiprocessing.cpu_count()
+        idx = (F.shape[0] + np.arange(0, n_procs))//n_procs
+        idx = np.concatenate(([0], np.cumsum(idx)))
+        eigvecs = np.empty((0, 3, 3))
+        with concurrent.futures.ProcessPoolExecutor() as executor:
+            eigvecs_chunks = [executor.submit(__strain_ellipsoid_multiprocess,
+                                              F, idx[iproc], idx[iproc+1]) for iproc in range(0, n_procs)]
+            # retrieve the results in the future object
+            for chunk in eigvecs_chunks:
+                eigvecs = np.concatenate((eigvecs, chunk.result()), axis=0)
+        return eigvecs
+    else:
+        raise RuntimeError("Unexpected input shape for F: {0}".format(F.shape))
 
 
 def polar_decomposition(F, mode='left'):
     '''
     compute polar decomposition of deformation gradient tensor.
-    if mode is left, 
-    compute VR = F, V is the left stretch, 
+    if mode is left,
+    compute VR = F, V is the left stretch,
     V*V is left Cauchy-Green tensor
     if mode is right, compute RU = F, U is the right stretch,
     U*U is the right Cauchy-Green tensor.
@@ -80,10 +109,10 @@ def det3(A):
 
 def eigh3_analytical(A):
     '''
-    A specialization for eigenvalue/eigenvector computation 
+    A specialization for eigenvalue/eigenvector computation
     for 3x3 symmetric matrix
     Reference:
-    Charles-Alban Deledalle, Loic Denis, Sonia Tabti, Florence Tupin. Closed-form expressions of the eigen decomposition of 2 x 2 and 3 x 3 Hermitian matrices. [Research Report] Université de Lyon. 2017. 
+    Charles-Alban Deledalle, Loic Denis, Sonia Tabti, Florence Tupin. Closed-form expressions of the eigen decomposition of 2 x 2 and 3 x 3 Hermitian matrices. [Research Report] Université de Lyon. 2017.
     https://hal.archives-ouvertes.fr/hal-01501221/document
     '''
     if __debug__:
@@ -136,3 +165,36 @@ def eigh3_analytical(A):
         v_sorted.append(y / np.linalg.norm(y))
 
     return np.array(l_sorted), np.array(v_sorted).T
+
+
+def kinematic_vorticity(L_tensor):
+    '''
+    Given the deformation gradient tensor
+    $L_{ij} = \frac{\partial v_i}{\partial x_j}$
+    compute the kinematic vorticity
+    The explicit formula is in taken from:
+    Tikoff and Fossen, Vol 17, No 12, 1995, Journal of Structural Geology
+    "The limitations of three-dimensional kinematic vorticity analysis", Eqn(4)
+    '''
+
+    # first extract entries of rate-of-deformation tensor D
+    if len(L_tensor.shape) == 2:
+        def L(i, j): return L_tensor[i-1, j-1]
+    elif len(L_tensor.shape) == 3:
+        # multiple entries
+        def L(i, j): return L_tensor[:, i-1, j-1]
+    else:
+        raise RuntimeError(f"Unknown input dimension for L: {L.shape}")
+
+    # norm squared of vorticity
+    W2 = (L(2, 3) - L(3, 2))**2
+    W2 += (L(1, 3) - L(3, 1))**2
+    W2 += (L(1, 2) - L(2, 1))**2
+
+    # squared stretching
+    S2 = 2.0 * (L(1, 1)**2 + L(2, 2)**2 + L(3, 3)**2)
+    S2 += (L(1, 2) + L(2, 1))**2
+    S2 += (L(2, 3) + L(3, 2))**2
+    S2 += (L(1, 3) + L(3, 1))**2
+
+    return np.sqrt(W2/S2)

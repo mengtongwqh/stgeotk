@@ -1,9 +1,12 @@
+from re import S
 from . utility import *
 from . coordinates import *
 
 import numpy as np
 import math
 from abc import ABC, abstractmethod
+import multiprocessing
+import concurrent.futures
 
 
 class CountingGrid:
@@ -200,6 +203,44 @@ class LineData(DatasetBase):
                 f"Export method for {type(self._data).name()} is not implemented")
 
 
+def _contour_data_variance_chunk(datac, k, alpha, idx_begin, idx_end):
+    # unroll_interval = 1000
+    # idx = np.append(np.arange(idx_begin, idx_end, unroll_interval), idx_end)
+    # for i in range(0, len(idx)-1):
+    #     i_begin, i_end = idx[i], idx[i+1]
+    #     tmp = np.exp(
+    #         k * np.abs(np.dot(datac, datac[i_begin:i_end, :].T)) + alpha)
+    #     np.fill_diagonal(tmp, 0.0)
+    #     s += -np.log(tmp.sum(axis=0)).sum()
+    s = 0.0
+    for i in range(idx_begin, idx_end):
+        tmp = np.exp(k * np.abs(np.dot(datac, datac[i, :])) + alpha)
+        tmp[i] = 0.0
+        s += -np.log(tmp.sum())
+    return s
+
+
+def _contour_data_variance(datac, k):
+    # log_info(f"[{current_function_name()}]: k = {k}")
+    k = 1.0e-9 if abs(k) < 1.0e-9 else k
+    if k < 500.0:
+        alpha = math.log(k/4.0/math.pi/math.sinh(k))
+    else:
+        alpha = math.log(k/2.0/math.pi) - k
+
+    n_procs = multiprocessing.cpu_count()
+    idx = (datac.shape[0] + np.arange(0, n_procs))//n_procs
+    idx = np.concatenate(([0], np.cumsum(idx)))
+    s = 0.0
+
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        results = [executor.submit(
+            _contour_data_variance_chunk, datac, k, alpha, idx[iproc], idx[iproc+1]) for iproc in range(0, n_procs)]
+        for chunk in concurrent.futures.as_completed(results):
+            s += chunk.result()
+    return s 
+
+
 class ContourData(DatasetBase):
     '''
     Object for computing the density contour.
@@ -293,23 +334,42 @@ class ContourData(DatasetBase):
         However that publication does not exist and 
         we don't know why this works.
         '''
-        timer = Timer()
-        timer.start()
         from scipy.optimize import minimize_scalar
+        use_faster_version = False
+        use_multiprocessing = True
         datac = self.dataset_to_contour.data
 
-        # objective function to be minimized
-        # TODO consider rewriting this using NewtonRaphson
-        def obj(k):
-            # suppress warning if k == 0.0
-            k = 1.0e-9 if abs(k) < 1.0e-9 else k
-            W = np.exp(k * (np.abs(np.dot(datac, datac.T)))) \
-                * (k / (4.0 * math.pi * math.sinh(k)))
-            np.fill_diagonal(W, 0.0)
-            return -np.log(W.sum(axis=0)).sum()
+        with Timer() as _:
+            if use_faster_version:
+                M = np.abs(np.dot(datac, datac.T))
+                np.fill_diagonal(M, 0.0)
 
-        val = minimize_scalar(obj).x
-        timer.stop()
+                def obj(k):
+                    with Timer() as _:
+                        k = 1.0e-9 if abs(k) < 1.0e-9 else k
+                        # log_info("k = {0}".format(k))
+                        if (k < 500.0):
+                            W = np.exp(M*k + math.log(k /
+                                                      4.0/math.pi/math.sinh(k)))
+                        else:
+                            W = np.exp(M*k + math.log(k/4.0/math.pi) - k)
+                        np.fill_diagonal(W, 0.0)
+                        val = -(np.log(W.sum(axis=0))).sum()
+                    return val
+
+            elif use_multiprocessing:
+                def obj(k): return _contour_data_variance(datac, k)
+            else:
+                def obj(k):
+                    with Timer() as _:
+                        # suppress warning if k == 0.0
+                        k = 1.0e-9 if abs(k) < 1.0e-9 else k
+                        W = np.exp(k * (np.abs(np.dot(datac, datac.T)))) \
+                            * (k / (4.0 * math.pi * math.sinh(k)))
+                        np.fill_diagonal(W, 0.0)
+                        val = -np.log(W.sum(axis=0)).sum()
+                    return val
+            val = minimize_scalar(obj).x
         return val
 
     def _count_kamb(self, counting_angle):
@@ -355,9 +415,9 @@ class ContourData(DatasetBase):
 
         if k is None:
             if self._auto_k_optimization:
+                log_info("Requested auto optimization of Fisher-k ...")
                 k = self._optimize_k()
-                log_info(
-                    "Sample-optimized Fisher counting k = {0}".format(k))
+                log_info(f"Sample-optimized Fisher counting k = {k}")
             else:
                 nsig2 = self._n_sigma * self._n_sigma
                 if polarized:

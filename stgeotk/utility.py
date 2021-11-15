@@ -5,7 +5,7 @@ import time
 _timer_log_level = 15
 
 # setup logger
-logging.addLevelName(_timer_log_level, "PROF")
+logging.addLevelName(_timer_log_level, "PERF")
 logger = logging.getLogger("stgeotk")
 formatter = logging.Formatter(
     "[%(levelname)s][%(asctime)s] %(name)s: %(message)s")
@@ -69,13 +69,24 @@ class Timer:
     '''
     A simple implementation for a code timer.
     usage:
-    timer = Timer()
-    timer.start()
-    elapsed_seconds = timer.stop()
+        timer = Timer()
+        timer.start()
+        elapsed_seconds = timer.stop()
+    or using context manager:
+        with Timer() as _:
+            <...code to be timed...>
     '''
 
     def __init__(self):
         self._start_time = None
+
+    def __enter__(self):
+        self._label_text = current_function_name(2)
+        self._start_time = time.perf_counter()
+        return self
+
+    def __exit__(self, *args):
+        self.stop()
 
     def start(self):
         '''
@@ -85,8 +96,8 @@ class Timer:
         if self._start_time is not None:
             raise TimerError(
                 "Timer is running. Use stop() to stop the previous run.")
-        self._start_time = time.perf_counter()
         self._label_text = current_function_name(2)
+        self._start_time = time.perf_counter()
 
     def stop(self):
         '''
