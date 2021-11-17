@@ -68,15 +68,19 @@ class VTKUnstructuredGridExtractor:
         point_data = self.grid_data.GetPointData()
         try:
             dataset = point_data.GetArray(dataset_name)
-
             if isinstance(dataset, np.ndarray):
+                log_info(f"Dataset {dataset_name} is loaded as numpy array")
+                if len(dataset.shape) == 3 and \
+                        dataset.shape[1] == dataset.shape[2] == 3:
+                    return dataset.transpose((0, 2, 1))
                 return dataset
             else:
+                log_info(f"Dataset {dataset_name} is converted to numpy array")
                 dataset_np = vtk_to_numpy(dataset)
                 if len(dataset_np.shape) > 1 and dataset_np.shape[1] == 9:
                     n_entries = dataset_np.shape[0]
-                    # note that tensor is column-major (Fortran) order
-                    return dataset_np.reshape((n_entries, 3, 3), order='F')
+                    # tensor is parsed in Fortran order
+                    return dataset_np.reshape((n_entries, 3, 3), order='C')
                 return dataset_np
         except:
             raise RuntimeError(

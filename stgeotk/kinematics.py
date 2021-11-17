@@ -6,7 +6,7 @@ import multiprocessing
 import concurrent.futures
 
 
-def __strain_ellipsoid_single_entry(F):
+def _strain_ellipsoid_single_entry(F):
     '''
     Given the deformation gradient F,
     extract lineation, foliation normal
@@ -33,18 +33,18 @@ def __strain_ellipsoid_single_entry(F):
     return eigvec.T
 
 
-def __strain_ellipsoid_multiprocess(F, range_begin, range_end):
+def _strain_ellipsoid_multiprocess(F, range_begin, range_end):
     eigvecs = np.zeros((range_end-range_begin, 3, 3))
     counter = 0
     for i in range(range_begin, range_end):
-        eigvecs[counter, :] = __strain_ellipsoid_single_entry(F[i, :])
+        eigvecs[counter, :] = _strain_ellipsoid_single_entry(F[i, :])
         counter += 1
     return eigvecs
 
 
 def strain_ellipsoid(F):
     if len(F.shape) == 2 and F.shape == (3, 3):
-        return __strain_ellipsoid_single_entry(F)
+        return _strain_ellipsoid_single_entry(F)
     elif len(F.shape) == 3 and F.shape[1] == F.shape[2] == 3:
         # use multi-processing
         n_procs = multiprocessing.cpu_count()
@@ -52,7 +52,7 @@ def strain_ellipsoid(F):
         idx = np.concatenate(([0], np.cumsum(idx)))
         eigvecs = np.empty((0, 3, 3))
         with concurrent.futures.ProcessPoolExecutor() as executor:
-            eigvecs_chunks = [executor.submit(__strain_ellipsoid_multiprocess,
+            eigvecs_chunks = [executor.submit(_strain_ellipsoid_multiprocess,
                                               F, idx[iproc], idx[iproc+1]) for iproc in range(0, n_procs)]
             # retrieve the results in the future object
             for chunk in eigvecs_chunks:
