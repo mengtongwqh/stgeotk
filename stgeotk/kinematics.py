@@ -1,9 +1,9 @@
+import concurrent.futures
 import math
+import multiprocessing
 import scipy.linalg as LA
 import numpy as np
 from . utility import logger
-import multiprocessing
-import concurrent.futures
 
 
 def _strain_ellipsoid_single_entry(F):
@@ -14,7 +14,7 @@ def _strain_ellipsoid_single_entry(F):
     which correspond to the 3 axis of the strain ellipsoid.
     They are also the eigenvectors of B = F*F^{T} = V*V,
     which is the left Cauchy-Green Tensor.
-    Return the values as 3x3 matrix, the row from top to bottom are 
+    Return the values as 3x3 matrix, the row from top to bottom are
     foliation normal, intermediate axis and lineation
     '''
     try:
@@ -26,9 +26,9 @@ def _strain_ellipsoid_single_entry(F):
         # make note of the matrix
         logger.exception(
             "The matrix is ill-conditioned and numerical algorithms have broken down.\n")
-        logger.error("The F matrix is:\n{0}\n".format(F))
-        logger.error("The FFt matrix is:\n{0}\n".format(FFt))
-        logger.error("Eigenvalues are: {0}\n".format(eigval))
+        logger.error("%s", "The F matrix is:\n{0}\n".format(F))
+        logger.error("%s", "The FFt matrix is:\n{0}\n".format(FFt))
+        logger.error("%s", "Eigenvalues are: {0}\n".format(eigval))
         raise  # rethrow the error
     return eigvec.T
 
@@ -53,7 +53,8 @@ def strain_ellipsoid(F):
         eigvecs = np.empty((0, 3, 3))
         with concurrent.futures.ProcessPoolExecutor() as executor:
             eigvecs_chunks = [executor.submit(_strain_ellipsoid_multiprocess,
-                                              F, idx[iproc], idx[iproc+1]) for iproc in range(0, n_procs)]
+                                              F, idx[iproc], idx[iproc+1]) \
+                                              for iproc in range(0, n_procs)]
             # retrieve the results in the future object
             for chunk in eigvecs_chunks:
                 eigvecs = np.concatenate((eigvecs, chunk.result()), axis=0)
@@ -112,7 +113,10 @@ def eigh3_analytical(A):
     A specialization for eigenvalue/eigenvector computation
     for 3x3 symmetric matrix
     Reference:
-    Charles-Alban Deledalle, Loic Denis, Sonia Tabti, Florence Tupin. Closed-form expressions of the eigen decomposition of 2 x 2 and 3 x 3 Hermitian matrices. [Research Report] Université de Lyon. 2017.
+    Charles-Alban Deledalle, Loic Denis, Sonia Tabti, Florence Tupin.
+    Closed-form expressions of the eigen decomposition of
+    2 x 2 and 3 x 3 Hermitian matrices.
+    [Research Report] Université de Lyon. 2017.
     https://hal.archives-ouvertes.fr/hal-01501221/document
     '''
     if __debug__:
@@ -170,7 +174,7 @@ def eigh3_analytical(A):
 def kinematic_vorticity(L_tensor):
     '''
     Given the deformation gradient tensor
-    $L_{ij} = \frac{\partial v_i}{\partial x_j}$
+    $L_{ij} = frac{partial v_i}{partial x_j}$
     compute the kinematic vorticity
     The explicit formula is in taken from:
     Tikoff and Fossen, Vol 17, No 12, 1995, Journal of Structural Geology
@@ -179,12 +183,14 @@ def kinematic_vorticity(L_tensor):
 
     # first extract entries of rate-of-deformation tensor D
     if len(L_tensor.shape) == 2:
-        def L(i, j): return L_tensor[i-1, j-1]
+        def L(i, j):
+            return L_tensor[i-1, j-1]
     elif len(L_tensor.shape) == 3:
         # multiple entries
-        def L(i, j): return L_tensor[:, i-1, j-1]
+        def L(i, j):
+            return L_tensor[:, i-1, j-1]
     else:
-        raise RuntimeError(f"Unknown input dimension for L: {L.shape}")
+        raise RuntimeError(f"Unknown input dimension for L: {L_tensor.shape}")
 
     # norm squared of vorticity
     W2 = (L(2, 3) - L(3, 2))**2
@@ -192,9 +198,25 @@ def kinematic_vorticity(L_tensor):
     W2 += (L(1, 2) - L(2, 1))**2
 
     # squared stretching
+    # in fact this is the J2 invariant of rate-of-deformation D
     S2 = 2.0 * (L(1, 1)**2 + L(2, 2)**2 + L(3, 3)**2)
     S2 += (L(1, 2) + L(2, 1))**2
     S2 += (L(2, 3) + L(3, 2))**2
     S2 += (L(1, 3) + L(3, 1))**2
 
     return np.sqrt(W2/S2)
+
+
+def strain_rate(L):
+    '''
+    Compute the double contraction of
+    the rate-of-deformation tensor D, i.e. D:D
+    where L = D + W
+    '''
+    if len(L.shape) == 2:
+        return np.linalg.norm(0.5 * (L + L.T))
+    elif len(L.shape) == 3:  # array of L tensors
+        D = 0.5 * (L + L.transpose((0, 2, 1)))
+        return np.linalg.norm(D, axis=(1, 2))
+    else:
+        raise RuntimeError(f"Unknown input dimension for L: {L.shape}")

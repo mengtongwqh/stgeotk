@@ -1,13 +1,13 @@
-import os
-import numpy as np
 import re
 import sys
-import vtk
-
-from . utility import *
-
-from vtk.util.numpy_support import vtk_to_numpy
 from io import StringIO
+
+import vtk
+import numpy as np
+from vtk.util.numpy_support import vtk_to_numpy
+
+from . utility import log_info
+
 
 
 class StreamCapturer(list):
@@ -27,13 +27,13 @@ class StreamCapturer(list):
 
 class VTKUnstructuredGridExtractor:
     '''
-    Extract VTKUnstructutredGrid from a file or from 
+    Extract VTKUnstructutredGrid from a file or fro
     data input in Paraview Programmable Filter.
     '''
 
     def __init__(self, finput):
         '''
-        Initialize the PointData with filename or with 
+        Initialize the PointData with filename or with Paraview Filter
         '''
         if isinstance(finput, str):
             # initialize a reader to extract data from particle output file
@@ -47,7 +47,7 @@ class VTKUnstructuredGridExtractor:
 
             point_number_entry = next(
                 (x for x in output if "Number Of Points" in x), None)
-            if (point_number_entry is None):
+            if point_number_entry is None:
                 raise RuntimeError("Number of Points entry not found")
 
             n_point = int(re.search(r"\d+", point_number_entry).group(0))
@@ -59,7 +59,7 @@ class VTKUnstructuredGridExtractor:
 
         else:
             self.grid_data = finput
-            log_info(f"Unstructured grid data is imported vtkUnstructuredGrid.")
+            log_info("Unstructured grid data is imported from vtkUnstructuredGrid.")
 
     def get_dataset(self, dataset_name):
         '''

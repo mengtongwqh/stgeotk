@@ -1,5 +1,6 @@
 import logging
 import datetime
+import sys
 import time
 
 _timer_log_level = 15
@@ -43,11 +44,10 @@ seconds_per_year = 60 * 60 * 24 * 365.2425
 
 
 def log_info(msg):
-    logger.info(BColors.OKGREEN + msg + BColors.ENDC)
+    logger.info("%s", BColors.OKGREEN + msg + BColors.ENDC)
 
 
 def current_function_name(level=1):
-    import sys
     return sys._getframe(level).f_code.co_name
 
 
@@ -79,6 +79,7 @@ class Timer:
 
     def __init__(self):
         self._start_time = None
+        self._label_text = ""
 
     def __enter__(self):
         self._label_text = current_function_name(2)
@@ -108,7 +109,7 @@ class Timer:
             raise TimerError("Timer is not yet started")
         elapsed_time = time.perf_counter() - self._start_time
         self._start_time = None
-        logger.log(_timer_log_level,
+        logger.log(_timer_log_level, "%s",
                    f"{BColors.OKBLUE}{BColors.BOLD}[{self._label_text}]"
                    f"{BColors.ENDC}{BColors.OKBLUE} elpased {elapsed_time} "
                    f"seconds{BColors.ENDC}")

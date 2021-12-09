@@ -1,10 +1,11 @@
-from math import sqrt
+from abc import ABC, abstractmethod
 import numpy as np
 from matplotlib.patches import Circle
 import matplotlib.pyplot as plt
-from . dataset import DatasetBase, ContourData
-from . utility import *
-from abc import ABC, abstractmethod
+from . dataset import DatasetBase
+from . contouring import ContourData
+from . utility import Timer, log_info
+from . stereomath import plane_nodes
 
 # fonts
 title_font = {"family": "sans-serif", "size": "12", "weight": "regular",
@@ -16,9 +17,9 @@ info_font = {"family": "sans-serif", "size": "6",
 
 
 class ProjectionBase(ABC):
-    '''
+    """
     Abstract for all projections
-    '''
+    """
 
     def project(self, data):
         if isinstance(data, DatasetBase):
@@ -38,10 +39,10 @@ class ProjectionBase(ABC):
 
 
 class EqualArea(ProjectionBase):
-    '''
+    """
     Lambert equal area projection.
     The lower-hemisphere is normalized to unit radius
-    '''
+    """
 
     def _do_project(self, x, y, z):
         # normalized so that the lower hemisphere
@@ -51,9 +52,9 @@ class EqualArea(ProjectionBase):
 
 
 class EqualAngle(ProjectionBase):
-    '''
+    """
     Schmidt equal angle projection.
-    '''
+    """
 
     def _do_project(self, x, y, z):
         alpha = 1.0 / (1.0 - z)
@@ -61,11 +62,11 @@ class EqualAngle(ProjectionBase):
 
 
 class Stereonet:
-    '''
+    """
     The stereonet object will accept different plot objects
-    and plot them on a single stereonet, 
+    and plot them on a single stereonet,
     with the presribed projection method.
-    '''
+    """
 
     def __init__(self, fig=None, ax=None, **kwargs):
         self.plots = []
@@ -98,9 +99,9 @@ class Stereonet:
     @projection.setter
     def projection(self, value):
         if isinstance(value, str):
-            if (value == "equal_area"):
+            if value == "equal_area":
                 self._projection = EqualArea()
-            elif (value == "equal_angle"):
+            elif value == "equal_angle":
                 self._projection = EqualAngle()
             else:
                 raise RuntimeError(
@@ -112,10 +113,10 @@ class Stereonet:
                 "Unknown projection input {0}".format(type(value)))
 
     def clear(self):
-        '''
+        """
         Remove all plots that are connected to the stereonet
         and redraw the primitive circle
-        '''
+        """
         self.plots = []
         self.data_axes.set_axis_off()
         self.data_axes.set_aspect(
@@ -123,40 +124,42 @@ class Stereonet:
         self.draw_primitive_circle()
 
     def append_plot(self, plot):
-        '''
+        """
         Append one data plot into the current plot.
         If there is color info in the plot, request a color axis.
-        '''
+        """
         self.plots.append(plot)
 
         # register this data
         if id(plot) in self.color_axes:
             raise RuntimeError(
-                "Plot with legend {0} has already been added.".format(self.data_legend))
+                "Plot with legend {0} has already been added.".
+                format(plot.data_legend))
+
+        if plot.dataset_to_plot.color_data is None:
+            # color axis is None
+            self.color_axes[id(plot)] = None
         else:
-            if plot.dataset_to_plot.color_data is None:
-                # color axis is None
-                self.color_axes[id(plot)] = None
-            else:
-                self.color_axes[id(plot)] = self._create_next_color_axis()
+            self.color_axes[id(plot)] = self._create_next_color_axis()
 
         log_info("{0} added to stereonet with options:{1}".format(
             type(plot).__name__, plot.plot_options))
 
     def generate_plots(self, show_plot=True):
-        '''
+        """
         Plot all datasets on this stereonet
-        '''
+        """
         timer = Timer()
         timer.start()
         for plot in self.plots:
             plot_obj = plot.draw()
             caxis = self.color_axes[id(plot)]
-            cb = plt.colorbar(plot_obj, cax=caxis,
-                              orientation="vertical", spacing="proportional")
-            cb.formatter.set_powerlimits((0, 0))
-            cb.set_label(plot.dataset_to_plot.color_legend)
-            caxis.yaxis.set_label_position("left")
+            if caxis is not None:
+                cb = plt.colorbar(plot_obj, cax=caxis,
+                                  orientation="vertical", spacing="proportional")
+                cb.formatter.set_powerlimits((0, 0))
+                cb.set_label(plot.dataset_to_plot.color_legend)
+                caxis.yaxis.set_label_position("left")
 
         # draw legends
         self.data_axes.legend(loc="upper right")
@@ -180,9 +183,9 @@ class Stereonet:
         return caxis
 
     def draw_primitive_circle(self):
-        '''
+        """
         Draw the primitive circle
-        '''
+        """
         self.data_axes.set_axis_off()
         circ = Circle((0, 0), radius=1, edgecolor="black",
                       facecolor="none", clip_box="None")
@@ -197,33 +200,41 @@ class Stereonet:
         return circ
 
     def project(self, data):
-        '''
+        """
         Project the xyz data to a 2d plane
         using the suitable projection method
-        '''
-        return self.projection.project(data)
-
+        """
+        return self._projection.project(data)
 
     def save_plot(self, fname, **kwargs):
-        '''
+        """
         export the plot to disk
-        '''
-        self.figure.savefig(fname, **kwargs) 
+        """
+        self.figure.savefig(fname, **kwargs)
         log_info(f"Stereonet plot is saved to {fname}")
 
 
 class PlotBase(ABC):
-    '''
+    """
     Base class for all plot objects
-    '''
+    """
 
     def __init__(self, stereonet, data, **kwargs):
         self._stereonet = stereonet
         self._dataset_to_plot = data
+        self._plot_options = dict()
         self.plot_options = kwargs
 
     @ abstractmethod
-    def _set_plot_options(self, value):
+    def _set_plot_options(self, options):
+        return
+
+    @ abstractmethod
+    def draw(self):
+        """
+        This method will be called by stereonet
+        to generate the plots
+        """
         return
 
     @ abstractmethod
@@ -246,21 +257,18 @@ class PlotBase(ABC):
     def plot_options(self, value):
         self._set_plot_options(value)
 
-    def extract_option(self, opt_copy, key):
+    @staticmethod
+    def extract_option(opt_copy, key):
         if key in opt_copy:
             return opt_copy.pop(key)
-        else:
-            raise RuntimeError(
-                "{0} is not in options {1}".format(key, opt_copy))
+        raise RuntimeError(
+            "{0} is not in options {1}".format(key, opt_copy))
 
 
 class LinePlot(PlotBase):
-    '''
+    """
     Plot the lineation data on the stereonet
-    '''
-
-    def __init__(self, stereonet, data, **kwargs):
-        super().__init__(stereonet, data, **kwargs)
+    """
 
     def _set_plot_options(self, options):
         self._plot_options = options
@@ -273,9 +281,9 @@ class LinePlot(PlotBase):
             self._plot_options["cmap"] = "coolwarm"
 
     def draw(self):
-        '''
+        """
         Execute plotting on the stereonet.
-        '''
+        """
         opt = self.plot_options.copy()
         x, y = self.stereonet.project(self.dataset_to_plot).T
         # extract color data, if we have them:
@@ -298,15 +306,58 @@ class LinePlot(PlotBase):
             self.dataset_to_plot.data_legend, self.dataset_to_plot.n_entries)
 
 
+class PlanePlot(PlotBase):
+    """
+    Plot the planar data as great circles on the stereonet
+    """
+
+    def _set_plot_options(self, options):
+        self._plot_options = options
+        # set default options
+        if "n_segments" not in self._plot_options:
+            self._plot_options["n_segments"] = 90  # plane resolution
+        if "color" not in self._plot_options:
+            self._plot_options["color"] = "black"
+        if "linewidth" not in self._plot_options:
+            self._plot_options["linewidth"] = 0.5
+
+    def draw(self):
+        """
+        draw the big circles onto the stereonet,
+        entry by entry.
+        """
+        dataset = self.dataset_to_plot.data
+        opt = self.plot_options.copy()
+        n_segments = opt.pop("n_segments")
+        ax = self.stereonet.data_axes
+        data_label = self.dataset_to_plot.data_legend
+
+        first_flag = True
+        for data in dataset:
+            nodes = plane_nodes(data[0], data[1], n_segments)
+            x, y = self.stereonet.project(nodes).T
+            if first_flag:
+                ax.plot(x, y, label=data_label, **opt)
+                first_flag = False
+            else:
+                ax.plot(x, y, **opt)
+
+    def info_text(self):
+        info = "Big circle plot for dataset \"{0}\" contains {1} entries.".\
+            format(self.dataset_to_plot.data_legend,
+                   self.dataset_to_plot.n_entries)
+        return info
+
+
 class ContourPlot(PlotBase):
-    '''
+    """
     Plotting the contour data
-    '''
+    """
 
     def __init__(self, stereonet, contour_data, **kwargs):
         super().__init__(stereonet, contour_data, **kwargs)
         if not isinstance(contour_data, ContourData):
-            raise(RuntimeError("Only ContourData is allowed for ContourPlot."))
+            raise RuntimeError("Only ContourData is allowed for ContourPlot.")
 
     def draw(self):
         opt = dict(self.plot_options).copy()
@@ -327,12 +378,12 @@ class ContourPlot(PlotBase):
                 X, Y, count, interval, **opt)
         return plot
 
-    def _set_plot_options(self, value):
-        self._plot_options = value
+    def _set_plot_options(self, options):
+        self._plot_options = options
         # set default options
-        if "n_intervals" not in value:
+        if "n_intervals" not in self._plot_options:
             self._plot_options["n_intervals"] = 10
-        if "filled" not in value:
+        if "filled" not in self._plot_options:
             self._plot_options["filled"] = True
         if "cmap" not in self._plot_options:
             self._plot_options["cmap"] = "Oranges"
@@ -344,4 +395,4 @@ class ContourPlot(PlotBase):
     def info_text(self):
         return "ContourPlot of dataset \"{0}\" with counting method \"{1}\".".\
             format(self.dataset_to_plot.dataset_to_contour.data_legend,
-                   self.dataset_to_plot._counting_method)
+                   self.dataset_to_plot.counting_method)
