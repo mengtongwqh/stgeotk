@@ -47,9 +47,9 @@ def spherical_to_line(theta_phi):
     Not yet tested
     """
     theta, phi = theta_phi[:, 1], theta_phi[:, 2]
-    trend = np.degree(0.5 * math.pi + math.pi *
-                      (np.degree(phi) > 0.0) - theta) % 360.0
-    plunge = np.abs(np.degree(phi) - 90.0)
+    trend = np.degrees(0.5 * math.pi + math.pi *
+                      (np.degrees(phi) > 0.0) - theta) % 360.0
+    plunge = np.abs(np.degrees(phi) - 90.0)
     return np.array([trend, plunge]).T
 
 
@@ -141,28 +141,34 @@ def plane_nodes(strike, dip, n_segments):
     return rotmat.dot(nodes).T
 
 
-def mean_vector(xyz, ensure_normalized=False):
-    """
-    Compute the mean vector of a vector dataset
-
-    return the mean vector and the spherical variance
-    """
-    assert xyz.shape[1] == 3, "The input data must be an N x 3 array"
-    if ensure_normalized:
-        xyz = xyz / np.linalg.norm(xyz, axis=0)
-
-    meanvector = xyz.sum(axis=0).T
-    R = np.linalg.norm(meanvector)
-    meanvector = meanvector / R
-    return meanvector, 1 - R/xyz.shape[0]
-
-
 def pole_to_plane(strike_dip):
     """
     return the pole to the plane,
     in the format of trend and plunge.
     """
-    strike, dip = strike_dip.T
-    normal_trd = (strike - 90.0) % 360.0
-    normal_plg = 90.0 - dip
-    return  np.array([normal_trd, normal_plg]).T
+    if isinstance(strike_dip, np.ndarray):
+        strike, dip = strike_dip.T
+        normal_trd = (strike - 90.0) % 360.0
+        normal_plg = 90.0 - dip
+        return  np.array([normal_trd, normal_plg]).T
+    elif isinstance(strike_dip, list):
+        return [(strike_dip[0] - 90.0) % 360.0, 90.0 - strike_dip[1]]
+    else:
+        raise NotImplementedError()
+
+
+def plane_from_pole(pole_tp):
+    """
+    return the plane attitude in strike-dip "line" format
+    from the given pole data
+    """
+    if isinstance(pole_tp, np.ndarray):
+        trend, plunge = pole_tp.T
+        plane_stk = (trend + 90.0) % 360.0
+        plane_dip = 90.0 - plunge
+        return  np.array([plane_stk, plane_dip]).T
+    elif isinstance(pole_tp, list):
+        return [(pole_tp[0] + 90.0) % 360.0, 90.0 - pole_tp[1]]
+    else:
+        raise NotImplementedError()
+

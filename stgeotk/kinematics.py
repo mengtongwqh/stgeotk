@@ -7,7 +7,7 @@ from . utility import logger
 
 
 def _strain_ellipsoid_single_entry(F):
-    '''
+    """
     Given the deformation gradient F,
     extract lineation, foliation normal
     and the intermediate strain axis
@@ -16,7 +16,7 @@ def _strain_ellipsoid_single_entry(F):
     which is the left Cauchy-Green Tensor.
     Return the values as 3x3 matrix, the row from top to bottom are
     foliation normal, intermediate axis and lineation
-    '''
+    """
     try:
         FFt = F.dot(F.T)
         eigval, eigvec = LA.eigh(FFt)
@@ -64,23 +64,23 @@ def strain_ellipsoid(F):
 
 
 def polar_decomposition(F, mode='left'):
-    '''
+    """
     compute polar decomposition of deformation gradient tensor.
     if mode is left,
     compute VR = F, V is the left stretch,
     V*V is left Cauchy-Green tensor
     if mode is right, compute RU = F, U is the right stretch,
     U*U is the right Cauchy-Green tensor.
-    '''
+    """
     rotation, stretch = LA.polar(F, mode)
     return stretch, rotation
 
 
 def rotation_matrix_to_euler_angles(R):
-    '''
+    """
     Given the rotation matrix R which is 3x3,
     compute the Euler angles on each axis.
-    '''
+    """
     sy = math.sqrt(R[0, 0] * R[0, 0] + R[1, 0] * R[1, 0])
     singular = sy < 1.0e-6
     if not singular:
@@ -95,10 +95,10 @@ def rotation_matrix_to_euler_angles(R):
 
 
 def det3(A):
-    '''
+    """
     Analytical implementation of the determinant of a 3x3 matrix.
     This might break down if the matrix has huge condition number.
-    '''
+    """
     if __debug__:
         assert A.shape == (3, 3)
     val = A[0, 0] * A[1, 1] * A[2, 2] + A[0, 1] * \
@@ -109,7 +109,7 @@ def det3(A):
 
 
 def eigh3_analytical(A):
-    '''
+    """
     A specialization for eigenvalue/eigenvector computation
     for 3x3 symmetric matrix
     Reference:
@@ -118,7 +118,7 @@ def eigh3_analytical(A):
     2 x 2 and 3 x 3 Hermitian matrices.
     [Research Report] Université de Lyon. 2017.
     https://hal.archives-ouvertes.fr/hal-01501221/document
-    '''
+    """
     if __debug__:
         assert A.shape == (3, 3)
 
@@ -172,14 +172,14 @@ def eigh3_analytical(A):
 
 
 def kinematic_vorticity(L_tensor):
-    '''
+    """
     Given the deformation gradient tensor
     $L_{ij} = frac{partial v_i}{partial x_j}$
     compute the kinematic vorticity
     The explicit formula is in taken from:
     Tikoff and Fossen, Vol 17, No 12, 1995, Journal of Structural Geology
     "The limitations of three-dimensional kinematic vorticity analysis", Eqn(4)
-    '''
+    """
 
     # first extract entries of rate-of-deformation tensor D
     if len(L_tensor.shape) == 2:
@@ -208,11 +208,11 @@ def kinematic_vorticity(L_tensor):
 
 
 def strain_rate(L):
-    '''
+    """
     Compute the double contraction of
     the rate-of-deformation tensor D, i.e. D:D
     where L = D + W
-    '''
+    """
     if len(L.shape) == 2:
         return np.linalg.norm(0.5 * (L + L.T))
     elif len(L.shape) == 3:  # array of L tensors

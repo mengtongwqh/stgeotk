@@ -26,15 +26,15 @@ class StreamCapturer(list):
 
 
 class VTKUnstructuredGridExtractor:
-    '''
+    """
     Extract VTKUnstructutredGrid from a file or fro
     data input in Paraview Programmable Filter.
-    '''
+    """
 
     def __init__(self, finput):
-        '''
+        """
         Initialize the PointData with filename or with Paraview Filter
-        '''
+        """
         if isinstance(finput, str):
             # initialize a reader to extract data from particle output file
             reader = vtk.vtkXMLUnstructuredGridReader()
@@ -62,9 +62,9 @@ class VTKUnstructuredGridExtractor:
             log_info("Unstructured grid data is imported from vtkUnstructuredGrid.")
 
     def get_dataset(self, dataset_name):
-        '''
+        """
         Get the the named dataset vector and put in np.array
-        '''
+        """
         point_data = self.grid_data.GetPointData()
         try:
             dataset = point_data.GetArray(dataset_name)

@@ -66,7 +66,7 @@ class TimerError(Exception):
 
 
 class Timer:
-    '''
+    """
     A simple implementation for a code timer.
     usage:
         timer = Timer()
@@ -75,7 +75,7 @@ class Timer:
     or using context manager:
         with Timer() as _:
             <...code to be timed...>
-    '''
+    """
 
     def __init__(self):
         self._start_time = None

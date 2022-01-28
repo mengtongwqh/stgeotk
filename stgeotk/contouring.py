@@ -49,9 +49,9 @@ def _contour_data_variance(datac, k):
 
 
 class ContourData(DatasetBase):
-    '''
+    """
     Object for computing the density contour.
-    '''
+    """
 
     def __init__(self, data_to_contour=None, **kwargs):
         # counting grid
@@ -95,7 +95,7 @@ class ContourData(DatasetBase):
 
         log_info(
             f"{type(data_to_contour).__name__} {data_to_contour.data_legend}"
-            f"loaded for contouring. "
+            f" loaded for contouring. "
             f"Polarized = {data_to_contour.is_polarized}")
 
     @property
@@ -134,13 +134,13 @@ class ContourData(DatasetBase):
             "Do not use this setter.")
 
     def _optimize_k(self):
-        '''
+        """
         Optimizes the value of K from the data,
         Inherited from auttitude package,
         where they claimed this is from using Diggle and Fisher (88).
         However that publication does not exist and
         we don't know why this works.
-        '''
+        """
         use_faster_version = False
         use_multiprocessing = True
         datac = self.dataset_to_contour.data
@@ -180,13 +180,13 @@ class ContourData(DatasetBase):
         return val
 
     def _count_kamb(self, counting_angle):
-        '''
+        """
         Performs counting as in Robin and Jowett (1986),
         which is in turn based on Kamb (1956).
         Will estimate an appropriate counting angle if not give.
         Estimations comes from Robin and Jowett (1986), Table 2.
         https://doi.org/10.1016/0040-1951(86)90044-2
-        '''
+        """
         datac = self.dataset_to_contour.data
         n = self.dataset_to_contour.n_entries
         polarized = self.dataset_to_contour.is_polarized
@@ -211,11 +211,11 @@ class ContourData(DatasetBase):
         return self.color_data
 
     def _count_fisher(self, k=None):
-        '''
+        """
         Perform data counting as in Robin and Jowett (1986)
         with spherical distribution
         Will guess an appropriate k if not given.
-        '''
+        """
         timer = Timer()
         timer.start()
         n = self.dataset_to_contour.n_entries
@@ -247,18 +247,18 @@ class ContourData(DatasetBase):
 
 
 class CountingGrid:
-    '''
+    """
     Generate a counting grid for density calculation.
-    '''
+    """
 
     def __init__(self, grid_type):
         self._grid_type = grid_type
 
     def _hemispherical_grid(self, degree_spacing):
-        '''
+        """
         Construct the counting grid in the lineation coordinate
         Assuming lower hemispheric
-        '''
+        """
         spacing = math.radians(degree_spacing)
         nodes = [(0.0, 90.0)]  # south pole
         # ordinary points on sphere
@@ -274,9 +274,9 @@ class CountingGrid:
         return line_to_cartesian(np.array(nodes))
 
     def _spherical_grid(self, degree_spacing):
-        '''
+        """
         Construct the counting grid for the whole sphere
-        '''
+        """
         spacing = math.radians(degree_spacing)
         nodes = [(0.0, 90.0), (0.0, -90.0)]  # south and north pole
         # equator
@@ -297,5 +297,4 @@ class CountingGrid:
         elif self._grid_type == "spherical":
             return self._spherical_grid(degree_spacing)
         else:
-            raise RuntimeError(
-                "Unknown counting grid type {0}".format(self._grid_type))
+            raise RuntimeError(f"Unknown counting grid type {self._grid_type}")

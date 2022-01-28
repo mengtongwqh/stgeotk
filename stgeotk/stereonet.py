@@ -71,6 +71,8 @@ class Stereonet:
     def __init__(self, fig=None, ax=None, **kwargs):
         self.plots = []
         self.color_axes = {}  # {id(plot) : color_axis } pair
+        self.color_bar = {}
+        self.collections = {} # { plot : color_axis } pair
 
         self._caxes_origin = [0.6, 0.05]
         self._caxes_current_origin = self._caxes_origin
@@ -128,49 +130,55 @@ class Stereonet:
         Append one data plot into the current plot.
         If there is color info in the plot, request a color axis.
         """
+        timer = Timer()
+        timer.start()
+
         self.plots.append(plot)
 
         # register this data
-        if id(plot) in self.color_axes:
+        if plot in self.collections:
             raise RuntimeError(
                 "Plot with legend {0} has already been added.".
                 format(plot.data_legend))
 
+        collection = plot.draw()
+
         if plot.dataset_to_plot.color_data is None:
             # color axis is None
-            self.color_axes[id(plot)] = None
+            self.color_axes[plot] = None
+            self.color_bar[plot] = None
         else:
-            self.color_axes[id(plot)] = self._create_next_color_axis()
+            caxis = self._create_next_color_axis()
+            cb = plt.colorbar(collection, cax=caxis,
+                              orientation="vertical", spacing="proportional")
+            cb.formatter.set_powerlimits((0, 0))
+            cb.set_label(plot.dataset_to_plot.color_legend)
+            caxis.yaxis.set_label_position("left")
+            self.color_axes[plot] = caxis
+            self.color_bar[plot] = cb
 
+        self.collections[plot] = collection
+
+        timer.stop()
         log_info("{0} added to stereonet with options:{1}".format(
             type(plot).__name__, plot.plot_options))
+        return collection
 
     def generate_plots(self, show_plot=True):
         """
         Plot all datasets on this stereonet
         """
-        timer = Timer()
-        timer.start()
-        for plot in self.plots:
-            plot_obj = plot.draw()
-            caxis = self.color_axes[id(plot)]
-            if caxis is not None:
-                cb = plt.colorbar(plot_obj, cax=caxis,
-                                  orientation="vertical", spacing="proportional")
-                cb.formatter.set_powerlimits((0, 0))
-                cb.set_label(plot.dataset_to_plot.color_legend)
-                caxis.yaxis.set_label_position("left")
-
         # draw legends
         self.data_axes.legend(loc="upper right")
-        timer.stop()
         log_info("All plots are successfully generated")
+
         # info string
         info_txt = ""
         for plot in self.plots:
             info_txt += plot.info_text() + '\n'
         self.data_axes.text(1.05, 0.95, info_txt,
                             transform=self.data_axes.transAxes,  **info_font)
+
         # show plots immediately
         if show_plot:
             plt.show()
@@ -196,7 +204,8 @@ class Stereonet:
         # crosses for each quadrant and center
         x_cross = [0, 1, 0, -1, 0]
         y_cross = [0, 0, 1, 0, -1]
-        self.data_axes.plot(x_cross, y_cross, "k+", markersize=8)
+        #  self.data_axes.plot(x_cross, y_cross, "k+", markersize=10)
+        self.data_axes.scatter(x_cross,y_cross, s = 100, color="grey", marker='+')
         return circ
 
     def project(self, data):
@@ -360,22 +369,25 @@ class ContourPlot(PlotBase):
             raise RuntimeError("Only ContourData is allowed for ContourPlot.")
 
     def draw(self):
+        # make a copy of the options
         opt = dict(self.plot_options).copy()
 
         X, Y = self.stereonet.project(self.dataset_to_plot.nodes).T
         count = self.dataset_to_plot.color_data
+        n = self.extract_option(opt, "n_intervals") + 1
 
-        # make a copy of the options
-        interval = np.linspace(
-            0, count.max(),
-            self.extract_option(opt, "n_intervals"))
+        if "lim" not in opt:
+            levels = np.linspace(0, count.max(), n)
+        else:
+            lim = self.extract_option(opt, "lim")
+            levels = np.linspace(lim[0], lim[1], n)
 
         if self.extract_option(opt, "filled"):
             plot = self.stereonet.data_axes.tricontourf(
-                X, Y, count, interval, **opt)
+                X, Y, count, levels, extend="both", **opt)
         else:
             plot = self.stereonet.data_axes.tricontour(
-                X, Y, count, interval, **opt)
+                X, Y, count, levels, **opt)
         return plot
 
     def _set_plot_options(self, options):
