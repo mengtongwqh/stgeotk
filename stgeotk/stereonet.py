@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 import numpy as np
 from matplotlib.patches import Circle
 import matplotlib.pyplot as plt
+from matplotlib import colors
 from . dataset import DatasetBase
 from . contouring import ContourData
 from . utility import Timer, log_info
@@ -177,7 +178,8 @@ class Stereonet:
         for plot in self.plots:
             info_txt += plot.info_text() + '\n'
         self.data_axes.text(1.05, 0.95, info_txt,
-                            transform=self.data_axes.transAxes,  **info_font)
+                            transform=self.data_axes.transAxes,
+                            **info_font)
 
         # show plots immediately
         if show_plot:
@@ -231,7 +233,7 @@ class PlotBase(ABC):
     def __init__(self, stereonet, data, **kwargs):
         self._stereonet = stereonet
         self._dataset_to_plot = data
-        self._plot_options = dict()
+        self._plot_options = {}
         self.plot_options = kwargs
 
     @ abstractmethod
@@ -294,20 +296,40 @@ class LinePlot(PlotBase):
         Execute plotting on the stereonet.
         """
         opt = self.plot_options.copy()
+        cmap_norm = None
         x, y = self.stereonet.project(self.dataset_to_plot).T
+
         # extract color data, if we have them:
         if self.dataset_to_plot.color_data is not None:
             if "color" in opt:
                 opt.pop("color")
+
+            if "cmap_limits" in opt:
+                cmap_limits = opt.pop("cmap_limits")
+                if cmap_limits is None:
+                    cmap_limits = [None, None]
+            else:
+                cmap_limits = [None, None]
+
+            if "cmap_center" in opt:
+                cmap_center = opt.pop("cmap_center")
+                if cmap_center is not None:
+                    cmap_norm = colors.TwoSlopeNorm(cmap_center, cmap_limits[0], cmap_limits[1])
+
             plot = self.stereonet.data_axes.scatter(
                 x, y, c=self.dataset_to_plot.color_data,
                 label=self.dataset_to_plot.data_legend,
-                **opt)
+                norm = cmap_norm, **opt)
         else:
             if "color" not in opt:
                 opt["color"] = "black"
+            if "cmap_limits" in opt:
+                opt.pop("cmap_limits")
+            if "cmap_center" in opt:
+                opt.pop("cmap_center")
+            
             plot = self.stereonet.data_axes.scatter(x, y,
-                                                    label=self.dataset_to_plot.data_legend,  **opt)
+                    label=self.dataset_to_plot.data_legend, **opt)
         return plot
 
     def info_text(self):
@@ -380,7 +402,10 @@ class ContourPlot(PlotBase):
             levels = np.linspace(0, count.max(), n)
         else:
             lim = self.extract_option(opt, "lim")
-            levels = np.linspace(lim[0], lim[1], n)
+            if lim is None:
+                levels = np.linspace(0, count.max(), n)
+            else:
+                levels = np.linspace(lim[0], lim[1], n)
 
         if self.extract_option(opt, "filled"):
             plot = self.stereonet.data_axes.tricontourf(
