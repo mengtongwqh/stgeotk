@@ -58,9 +58,8 @@ class DatasetBase(ABC):
         if value is None:
             return
         if len(value) != self.n_entries:
-            raise RuntimeError("The dataset has length {0} "
-                               "but the color data has length {1}".
-                               format(self.n_entries, len(value)))
+            raise RuntimeError(f"The dataset has length {self.n_entries} "\
+                               f"but the color data has length {len(value)}")
         self._color_data = value
 
     @abstractmethod
@@ -117,7 +116,7 @@ class LineData(DatasetBase):
                 self.__restrict_to_hemisphere(self._hemisphere)
         else:
             raise(RuntimeError(
-                "Unexpected dimension for input dataset: {0}".format(value.shape)))
+                f"Unexpected dimension for input dataset: {value.shape}"))
         self._n_entries = self.data.shape[0]
 
     def __restrict_to_hemisphere(self, hemisphere):
@@ -134,8 +133,7 @@ class LineData(DatasetBase):
             lower_hemis = self._data[:, 2] < 0
             self._data[lower_hemis, :] = -self._data[lower_hemis, :]
         else:
-            raise RuntimeError(
-                "Unknown hemisphere type {0}".format(hemisphere))
+            raise RuntimeError(f"Unknown hemisphere type {hemisphere}")
 
     def write_to_file(self, **kwargs):
         """
@@ -151,7 +149,8 @@ class LineData(DatasetBase):
                 f"{self._n_entries} line data entries written to file [{file}]")
         else:
             raise RuntimeError(
-                f"Export method for {type(self._data).__name__} is not implemented")
+                f"Export method for {type(self._data).__name__} "\
+                "is not implemented")
 
 
     def eigen(self):
@@ -180,8 +179,9 @@ class PlaneData(DatasetBase):
                   data, data_legend="Foliation",
                   color_data=None, color_legend=""):
         self._do_data_load(data, data_legend, color_data, color_legend)
-        log_info("PlaneData of {0} entries are loaded with legend \"{1}\"".
-                 format(self.n_entries, self.data_legend))
+        log_info(
+            f"PlaneData of {self.n_entries} entries are loaded "\
+            f"with legend \"{self.data_legend}\"")
 
     def _set_data(self, value):
         # builtin list, convert to numpy array

@@ -82,9 +82,9 @@ class VTKUnstructuredGridExtractor:
                     # tensor is parsed in Fortran order
                     return dataset_np.reshape((n_entries, 3, 3), order='C')
                 return dataset_np
-        except:
+        except BaseException as error:
             raise RuntimeError(
-                f"Failed to extract the data set {dataset_name}")
+                f"Failed to extract the data set {dataset_name}") from error
 
     def get_xyz(self):
         try:

@@ -71,12 +71,12 @@ class Stereonet:
 
     def __init__(self, fig=None, ax=None, **kwargs):
         self.plots = []
-        self.color_axes = {}  # {id(plot) : color_axis } pair
+        self.color_axes = {}  # { plot : color_axis } pair
         self.color_bar = {}
-        self.collections = {} # { plot : color_axis } pair
+        self.collections = {}  # { plot : color_axis } pair
 
         self._caxes_origin = [0.6, 0.05]
-        self._caxes_current_origin = self._caxes_origin
+        self._caxes_current_origin = self._caxes_origin.copy()
         self._caxes_extent = [0.02, 0.4]
 
         if fig is None and ax is None:
@@ -107,23 +107,35 @@ class Stereonet:
             elif value == "equal_angle":
                 self._projection = EqualAngle()
             else:
-                raise RuntimeError(
-                    "Unknown projection method {0}.".format(value))
+                raise RuntimeError(f"Unknown projection method {value}.")
         elif isinstance(value, ProjectionBase):
             self._projection = value
         else:
-            raise RuntimeError(
-                "Unknown projection input {0}".format(type(value)))
+            raise RuntimeError(f"Unknown projection input {type(value)}")
 
     def clear(self):
         """
         Remove all plots that are connected to the stereonet
         and redraw the primitive circle
         """
-        self.plots = []
+        for _, caxis in self.color_axes.items():
+            if caxis is not None:
+                caxis.remove()
+
+        self._caxes_current_origin = self._caxes_origin.copy()
+        self.color_axes.clear()
+        self.color_bar.clear()
+
+        # for _, collection in self.collections.items():
+        #     collection.remove()
+        self.collections.clear()
+
+        self.plots.clear()
+        self.data_axes.clear()
         self.data_axes.set_axis_off()
         self.data_axes.set_aspect(
             aspect="equal", adjustable=None, anchor="W")
+
         self.draw_primitive_circle()
 
     def append_plot(self, plot):
@@ -139,8 +151,7 @@ class Stereonet:
         # register this data
         if plot in self.collections:
             raise RuntimeError(
-                "Plot with legend {0} has already been added.".
-                format(plot.data_legend))
+                f"Plot with legend {plot.data_legend} has already been added.")
 
         collection = plot.draw()
 
@@ -161,8 +172,9 @@ class Stereonet:
         self.collections[plot] = collection
 
         timer.stop()
-        log_info("{0} added to stereonet with options:{1}".format(
-            type(plot).__name__, plot.plot_options))
+        log_info(
+            f"{type(plot).__name__} added to stereonet "\
+            f"with options:{plot.plot_options}")
         return collection
 
     def generate_plots(self, show_plot=True):
@@ -206,8 +218,8 @@ class Stereonet:
         # crosses for each quadrant and center
         x_cross = [0, 1, 0, -1, 0]
         y_cross = [0, 0, 1, 0, -1]
-        #  self.data_axes.plot(x_cross, y_cross, "k+", markersize=10)
-        self.data_axes.scatter(x_cross,y_cross, s = 100, color="grey", marker='+')
+        self.data_axes.scatter(x_cross, y_cross, s=100,
+                               color="grey", marker='+')
         return circ
 
     def project(self, data):
@@ -272,8 +284,7 @@ class PlotBase(ABC):
     def extract_option(opt_copy, key):
         if key in opt_copy:
             return opt_copy.pop(key)
-        raise RuntimeError(
-            "{0} is not in options {1}".format(key, opt_copy))
+        raise RuntimeError(f"{key} is not in options {opt_copy}")
 
 
 class LinePlot(PlotBase):
@@ -314,12 +325,13 @@ class LinePlot(PlotBase):
             if "cmap_center" in opt:
                 cmap_center = opt.pop("cmap_center")
                 if cmap_center is not None:
-                    cmap_norm = colors.TwoSlopeNorm(cmap_center, cmap_limits[0], cmap_limits[1])
+                    cmap_norm = colors.TwoSlopeNorm(
+                        cmap_center, cmap_limits[0], cmap_limits[1])
 
             plot = self.stereonet.data_axes.scatter(
                 x, y, c=self.dataset_to_plot.color_data,
                 label=self.dataset_to_plot.data_legend,
-                norm = cmap_norm, **opt)
+                norm=cmap_norm, **opt)
         else:
             if "color" not in opt:
                 opt["color"] = "black"
@@ -327,14 +339,15 @@ class LinePlot(PlotBase):
                 opt.pop("cmap_limits")
             if "cmap_center" in opt:
                 opt.pop("cmap_center")
-            
+
             plot = self.stereonet.data_axes.scatter(x, y,
-                    label=self.dataset_to_plot.data_legend, **opt)
+                                                    label=self.dataset_to_plot.data_legend, **opt)
         return plot
 
     def info_text(self):
-        return "Scatter plot for dataset \"{0}\" contains {1} points".format(
-            self.dataset_to_plot.data_legend, self.dataset_to_plot.n_entries)
+        return "Scatter plot for dataset "\
+            f"\"{self.dataset_to_plot.data_legend}\" "\
+            f"contains {self.dataset_to_plot.n_entries} points."
 
 
 class PlanePlot(PlotBase):
@@ -374,10 +387,9 @@ class PlanePlot(PlotBase):
                 ax.plot(x, y, **opt)
 
     def info_text(self):
-        info = "Big circle plot for dataset \"{0}\" contains {1} entries.".\
-            format(self.dataset_to_plot.data_legend,
-                   self.dataset_to_plot.n_entries)
-        return info
+        return "Big circle plot for dataset " \
+            f"\"{self.dataset_to_plot.data_legend}\" " \
+            f"contains {self.dataset_to_plot.n_entries} entries."
 
 
 class ContourPlot(PlotBase):
@@ -430,6 +442,6 @@ class ContourPlot(PlotBase):
             self._plot_options["alpha"] = 1.0
 
     def info_text(self):
-        return "ContourPlot of dataset \"{0}\" with counting method \"{1}\".".\
-            format(self.dataset_to_plot.dataset_to_contour.data_legend,
-                   self.dataset_to_plot.counting_method)
+        return "ContourPlot of dataset "\
+            f"\"{self.dataset_to_plot.dataset_to_contour.data_legend}\" "\
+            f"with counting method \"{self.dataset_to_plot.counting_method}\"."
