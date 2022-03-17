@@ -92,8 +92,9 @@ class LineData(DatasetBase):
         Load the dataset
         """
         self._do_data_load(data, data_legend, color_data, color_legend)
-        log_info("LineData of {0} entries are loaded with legend \"{1}\"".
-                 format(self.n_entries, self.data_legend))
+        log_info(
+            f"LineData of {self.n_entries} entries "\
+            f"are loaded with legend \"{self.data_legend}\"")
 
     def _set_data(self, value):
         """

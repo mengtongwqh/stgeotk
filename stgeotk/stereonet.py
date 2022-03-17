@@ -74,6 +74,7 @@ class Stereonet:
         self.color_axes = {}  # { plot : color_axis } pair
         self.color_bar = {}
         self.collections = {}  # { plot : color_axis } pair
+        self.info_text = "" #  additional info text
 
         self._caxes_origin = [0.6, 0.05]
         self._caxes_current_origin = self._caxes_origin.copy()
@@ -122,6 +123,7 @@ class Stereonet:
             if caxis is not None:
                 caxis.remove()
 
+        self.info_text = ""
         self._caxes_current_origin = self._caxes_origin.copy()
         self.color_axes.clear()
         self.color_bar.clear()
@@ -173,9 +175,10 @@ class Stereonet:
 
         timer.stop()
         log_info(
-            f"{type(plot).__name__} added to stereonet "\
+            f"{type(plot).__name__} added to stereonet "
             f"with options:{plot.plot_options}")
         return collection
+
 
     def generate_plots(self, show_plot=True):
         """
@@ -186,7 +189,7 @@ class Stereonet:
         log_info("All plots are successfully generated")
 
         # info string
-        info_txt = ""
+        info_txt = self.info_text + '\n'
         for plot in self.plots:
             info_txt += plot.info_text() + '\n'
         self.data_axes.text(1.05, 0.95, info_txt,
@@ -315,12 +318,17 @@ class LinePlot(PlotBase):
             if "color" in opt:
                 opt.pop("color")
 
+            cmap_limits_autoset = False
             if "cmap_limits" in opt:
                 cmap_limits = opt.pop("cmap_limits")
                 if cmap_limits is None:
-                    cmap_limits = [None, None]
+                    cmap_limits_autoset = True
             else:
-                cmap_limits = [None, None]
+                cmap_limits_autoset = True
+            if cmap_limits_autoset:
+                cmap_limits = [
+                    min(self.dataset_to_plot.color_data),
+                    max(self.dataset_to_plot.color_data)]
 
             if "cmap_center" in opt:
                 cmap_center = opt.pop("cmap_center")
