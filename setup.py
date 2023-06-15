@@ -4,6 +4,10 @@ from setuptools import setup
 PROJECT = "stgeotk"
 DESCRIPTION = "Structural Geology Toolkit"
 LONG_DESCRIPTION = "Structural geology algorithms for data analysis and visualization"
+DEPENDENCIES = [
+        'numpy',
+        'matplotlib',
+        'scipy']
 
 
 setup(
@@ -12,5 +16,6 @@ setup(
   author='WU,Qihang',
   author_email='wu.qihang@hotmail.com',
   packages = ['stgeotk'],
-  description=DESCRIPTION,
-  long_description=LONG_DESCRIPTION)
+  install_requires = DEPENDENCIES,
+  description = DESCRIPTION,
+  long_description = LONG_DESCRIPTION)
