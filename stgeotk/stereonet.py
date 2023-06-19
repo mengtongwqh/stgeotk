@@ -347,6 +347,8 @@ class LinePlot(PlotBase):
                 opt.pop("cmap_limits")
             if "cmap_center" in opt:
                 opt.pop("cmap_center")
+            if "cmap" in opt:
+                opt.pop("cmap")
 
             plot = self.stereonet.data_axes.scatter(x, y,
                                                     label=self.dataset_to_plot.data_legend, **opt)

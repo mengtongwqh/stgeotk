@@ -1,5 +1,6 @@
 import concurrent.futures
 import math
+import os
 import multiprocessing
 import numpy as np
 from scipy.optimize import minimize_scalar
@@ -142,7 +143,8 @@ class ContourData(DatasetBase):
         we don't know why this works.
         """
         use_faster_version = False
-        use_multiprocessing = True
+        # Windows does not fork, will cause problems in QGIS
+        use_multiprocessing = (os.name == "posix")
         datac = self.dataset_to_contour.data
 
         with Timer() as _:
