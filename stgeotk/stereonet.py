@@ -213,7 +213,7 @@ class Stereonet:
         """
         self.data_axes.set_axis_off()
         circ = Circle((0, 0), radius=1, edgecolor="black",
-                      facecolor="none", clip_box="None")
+                      facecolor="none", clip_box=None)
         self.data_axes.add_patch(circ)
         self.data_axes.text(0.0, 1.02, "N", **title_font,
                             horizontalalignment="center")
@@ -298,8 +298,8 @@ class LinePlot(PlotBase):
     def _set_plot_options(self, options):
         self._plot_options = options
         # set default options
-        if "linewidths" not in self._plot_options:
-            self._plot_options["linewidths"] = 1.0
+        if "linewidth" not in self._plot_options:
+            self._plot_options["linewidth"] = 1.0
         if "marker" not in self._plot_options:
             self._plot_options["marker"] = '+'
         if "cmap" not in self._plot_options:
