@@ -1,9 +1,12 @@
-import concurrent.futures
 import math
-import multiprocessing
 import scipy.linalg as LA
 import numpy as np
-from . utility import logger
+from .utility import logger
+
+# import multiprocessing
+# import concurrent.futures
+
+CONDITION_NUMBER_UPPER_LIMIT = 1000
 
 
 def _strain_ellipsoid_single_entry(F):
@@ -17,53 +20,67 @@ def _strain_ellipsoid_single_entry(F):
     Return the values as 3x3 matrix, the row from top to bottom are
     foliation normal, intermediate axis and lineation
     """
-    try:
-        FFt = F.dot(F.T)
-        eigval, eigvec = LA.eigh(FFt)
-        for i in range(0, 3):
+    FFt = F.dot(F.T)
+    eigval, eigvec = LA.eigh(FFt)
+
+    # if somehow we find th
+    abs_eigval = np.abs(eigval)
+    condition_number = np.max(abs_eigval) / np.min(abs_eigval)
+    if condition_number > CONDITION_NUMBER_UPPER_LIMIT**2:
+        return np.zeros((3, 3))
+
+    for i in range(0, 3):
+        try:
+            if abs(eigval[i]) < 1.0e-10:
+                eigval[i] = 0
             eigvec[:, i] *= math.sqrt(eigval[i])
-    except ValueError:
-        # make note of the matrix
-        logger.exception(
-            "The matrix is ill-conditioned and numerical algorithms have broken down.\n")
-        logger.error("%s", "The F matrix is:\n{0}\n".format(F))
-        logger.error("%s", "The FFt matrix is:\n{0}\n".format(FFt))
-        logger.error("%s", "Eigenvalues are: {0}\n".format(eigval))
-        raise  # rethrow the error
+        except ValueError:
+            # make note of the matrix
+            logger.exception(
+                "The matrix is ill-conditioned and numerical algorithms have broken down.\n"
+            )
+            logger.error("%s", "The F matrix is:\n{0}\n".format(F))
+            logger.error("%s", "The FFt matrix is:\n{0}\n".format(FFt))
+            logger.error("%s", "Eigenvalues are: {0}\n".format(eigval))
+            raise ValueError(f"Eigenvalue is {eigval[i]}, F = {F}")  # rethrow the error
     return eigvec.T
-
-
-def _strain_ellipsoid_multiprocess(F, range_begin, range_end):
-    eigvecs = np.zeros((range_end-range_begin, 3, 3))
-    counter = 0
-    for i in range(range_begin, range_end):
-        eigvecs[counter, :] = _strain_ellipsoid_single_entry(F[i, :])
-        counter += 1
-    return eigvecs
 
 
 def strain_ellipsoid(F):
     if len(F.shape) == 2 and F.shape == (3, 3):
         return _strain_ellipsoid_single_entry(F)
     elif len(F.shape) == 3 and F.shape[1] == F.shape[2] == 3:
-        # use multi-processing
-        n_procs = multiprocessing.cpu_count()
-        idx = (F.shape[0] + np.arange(0, n_procs))//n_procs
-        idx = np.concatenate(([0], np.cumsum(idx)))
-        eigvecs = np.empty((0, 3, 3))
-        with concurrent.futures.ProcessPoolExecutor() as executor:
-            eigvecs_chunks = [executor.submit(_strain_ellipsoid_multiprocess,
-                                              F, idx[iproc], idx[iproc+1]) \
-                                              for iproc in range(0, n_procs)]
-            # retrieve the results in the future object
-            for chunk in eigvecs_chunks:
-                eigvecs = np.concatenate((eigvecs, chunk.result()), axis=0)
-        return eigvecs
+        eigval, eigvec = LA.eigh(np.matmul(F, np.transpose(F, axes=(0, 2, 1))))
+        return np.transpose(eigvec * np.sqrt(eigval[:, np.newaxis, :]), axes=(0, 2, 1))
     else:
         raise RuntimeError("Unexpected input shape for F: {0}".format(F.shape))
 
 
-def polar_decomposition(F, mode='left'):
+# def _strain_ellipsoid_multiprocess(F, range_begin, range_end):
+#     eigvecs = np.zeros((range_end - range_begin, 3, 3))
+#     counter = 0
+#     for i in range(range_begin, range_end):
+#         eigvecs[counter, :] = _strain_ellipsoid_single_entry(F[i, :])
+#         counter += 1
+#     return eigvecs
+
+
+#     # use multi-processing
+#     n_procs = multiprocessing.cpu_count()
+#     idx = (F.shape[0] + np.arange(0, n_procs))//n_procs
+#     idx = np.concatenate(([0], np.cumsum(idx)))
+#     eigvecs = np.empty((0, 3, 3))
+#     with concurrent.futures.ProcessPoolExecutor() as executor:
+#         eigvecs_chunks = [executor.submit(_strain_ellipsoid_multiprocess,
+#                                           F, idx[iproc], idx[iproc+1]) \
+#                                           for iproc in range(0, n_procs)]
+#     # retrieve the results in the future object
+#     for chunk in eigvecs_chunks:
+#         eigvecs = np.concatenate((eigvecs, chunk.result()), axis=0)
+#     return eigvecs
+
+
+def polar_decomposition(F, mode="left"):
     """
     compute polar decomposition of deformation gradient tensor.
     if mode is left,
@@ -101,10 +118,16 @@ def det3(A):
     """
     if __debug__:
         assert A.shape == (3, 3)
-    val = A[0, 0] * A[1, 1] * A[2, 2] + A[0, 1] * \
-        A[1, 2] * A[2, 0] + A[0, 2] * A[1, 0] * A[2, 1]
-    val -= A[0, 2]*A[1, 1]*A[2, 0] + A[0, 0] * \
-        A[1, 2]*A[2, 1] + A[0, 1]*A[1, 0]*A[2, 2]
+    val = (
+        A[0, 0] * A[1, 1] * A[2, 2]
+        + A[0, 1] * A[1, 2] * A[2, 0]
+        + A[0, 2] * A[1, 0] * A[2, 1]
+    )
+    val -= (
+        A[0, 2] * A[1, 1] * A[2, 0]
+        + A[0, 0] * A[1, 2] * A[2, 1]
+        + A[0, 1] * A[1, 0] * A[2, 2]
+    )
     return val
 
 
@@ -130,41 +153,45 @@ def eigh3_analytical(A):
     f = A[2, 0]
     abc = a + b + c
 
-    ra = 2.*a - b - c
-    rb = 2.*b - a - c
-    rc = 2.*c - a - b
+    ra = 2.0 * a - b - c
+    rb = 2.0 * b - a - c
+    rc = 2.0 * c - a - b
 
-    x1 = a*a + b*b + c*c - a*b - a*c - b*c + 3 * (d*d + f*f + e*e)
-    x2 = -ra*rb*rc + 9.0 * (rc*d*d + rb*f*f + ra*e*e) - 54.*(d*e*f)
+    x1 = a * a + b * b + c * c - a * b - a * c - b * c + 3 * (d * d + f * f + e * e)
+    x2 = (
+        -ra * rb * rc
+        + 9.0 * (rc * d * d + rb * f * f + ra * e * e)
+        - 54.0 * (d * e * f)
+    )
 
-    tmp = math.sqrt(4.0*x1*x1*x1 - x2*x2)
+    tmp = math.sqrt(4.0 * x1 * x1 * x1 - x2 * x2)
 
     if x2 > 0:
-        phi = math.atan(tmp/x2)
+        phi = math.atan(tmp / x2)
     elif x2 < 0:
-        phi = math.atan(tmp/x2) + math.pi
+        phi = math.atan(tmp / x2) + math.pi
     else:
         phi = 0.5 * math.pi
 
     # eigenvalues
-    lambda1 = (abc - 2.0*math.sqrt(x1)*math.cos(phi/3.0)) / 3.0
-    lambda2 = (abc + 2.0*math.sqrt(x1)*math.cos((phi - math.pi)/3.0)) / 3.0
-    lambda3 = (abc + 2.0*math.sqrt(x1)*math.cos((phi + math.pi)/3.0)) / 3.0
+    lambda1 = (abc - 2.0 * math.sqrt(x1) * math.cos(phi / 3.0)) / 3.0
+    lambda2 = (abc + 2.0 * math.sqrt(x1) * math.cos((phi - math.pi) / 3.0)) / 3.0
+    lambda3 = (abc + 2.0 * math.sqrt(x1) * math.cos((phi + math.pi) / 3.0)) / 3.0
 
-    m1 = (d*(c - lambda1) - e*f) / (f*(b-lambda1) - d*e)
-    m2 = (d*(c - lambda2) - e*f) / (f*(b-lambda2) - d*e)
-    m3 = (d*(c - lambda3) - e*f) / (f*(b-lambda3) - d*e)
+    m1 = (d * (c - lambda1) - e * f) / (f * (b - lambda1) - d * e)
+    m2 = (d * (c - lambda2) - e * f) / (f * (b - lambda2) - d * e)
+    m3 = (d * (c - lambda3) - e * f) / (f * (b - lambda3) - d * e)
 
-    v1 = np.array([(lambda1 - c - e*m1)/f, m1, 1.0])
-    v2 = np.array([(lambda2 - c - e*m2)/f, m2, 1.0])
-    v3 = np.array([(lambda3 - c - e*m3)/f, m3, 1.0])
+    v1 = np.array([(lambda1 - c - e * m1) / f, m1, 1.0])
+    v2 = np.array([(lambda2 - c - e * m2) / f, m2, 1.0])
+    v3 = np.array([(lambda3 - c - e * m3) / f, m3, 1.0])
 
     v = [v1, v2, v3]
     l = [lambda1, lambda2, lambda3]
 
     v_sorted = []
     l_sorted = []
-    for (x, y) in sorted(zip(l, v)):
+    for x, y in sorted(zip(l, v)):
         l_sorted.append(x)
         v_sorted.append(y / np.linalg.norm(y))
 
@@ -183,28 +210,31 @@ def kinematic_vorticity(L_tensor):
 
     # first extract entries of rate-of-deformation tensor D
     if len(L_tensor.shape) == 2:
+
         def L(i, j):
-            return L_tensor[i-1, j-1]
+            return L_tensor[i - 1, j - 1]
+
     elif len(L_tensor.shape) == 3:
         # multiple entries
         def L(i, j):
-            return L_tensor[:, i-1, j-1]
+            return L_tensor[:, i - 1, j - 1]
+
     else:
         raise RuntimeError(f"Unknown input dimension for L: {L_tensor.shape}")
 
     # norm squared of vorticity
-    W2 = (L(2, 3) - L(3, 2))**2
-    W2 += (L(1, 3) - L(3, 1))**2
-    W2 += (L(1, 2) - L(2, 1))**2
+    W2 = (L(2, 3) - L(3, 2)) ** 2
+    W2 += (L(1, 3) - L(3, 1)) ** 2
+    W2 += (L(1, 2) - L(2, 1)) ** 2
 
     # squared stretching
     # in fact this is the J2 invariant of rate-of-deformation D
-    S2 = 2.0 * (L(1, 1)**2 + L(2, 2)**2 + L(3, 3)**2)
-    S2 += (L(1, 2) + L(2, 1))**2
-    S2 += (L(2, 3) + L(3, 2))**2
-    S2 += (L(1, 3) + L(3, 1))**2
+    S2 = 2.0 * (L(1, 1) ** 2 + L(2, 2) ** 2 + L(3, 3) ** 2)
+    S2 += (L(1, 2) + L(2, 1)) ** 2
+    S2 += (L(2, 3) + L(3, 2)) ** 2
+    S2 += (L(1, 3) + L(3, 1)) ** 2
 
-    return np.sqrt(W2/S2)
+    return np.sqrt(W2 / S2)
 
 
 def strain_rate(L):

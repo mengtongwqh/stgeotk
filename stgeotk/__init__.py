@@ -4,7 +4,7 @@ from stgeotk.kinematics import *
 from stgeotk.stereomath import *
 from stgeotk.contouring import ContourData
 from stgeotk.statistics import *
-from stgeotk.utility import second_to_myr, meter_per_second_to_cm_per_year
+from stgeotk.utility import second_to_myr, meter_per_second_to_cm_per_year,logger
 
 # do not import file io
 vtk_exists = True

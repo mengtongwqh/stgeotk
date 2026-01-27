@@ -3,3 +3,4 @@ setuptools
 settings.json
 build
 *.egg-info
+test
